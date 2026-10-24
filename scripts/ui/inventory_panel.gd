@@ -95,14 +95,20 @@ func _refresh() -> void:
 		row.add_child(name_label)
 		row.add_child(UICommon.label("%d格/件 · 共%d" % [info["slots"], info["value"] * n], 16, UICommon.DIM))
 		var drop1 := UICommon.button("丢弃1", 16)
-		drop1.pressed.connect(func() -> void:
-			GameState.remove_dive_item(id)
-			Sfx.play("click"))
+		drop1.pressed.connect(_drop_one.bind(id))
 		row.add_child(drop1)
 		var drop_all := UICommon.button("全丢", 16)
-		drop_all.pressed.connect(func() -> void:
-			while GameState.remove_dive_item(id):
-				pass
-			Sfx.play("click"))
+		drop_all.pressed.connect(_drop_all.bind(id))
 		row.add_child(drop_all)
 		_rows_box.add_child(row)
+
+
+func _drop_one(id: String) -> void:
+	if GameState.remove_dive_item(id):
+		Sfx.play("click")
+
+
+func _drop_all(id: String) -> void:
+	while GameState.remove_dive_item(id):
+		pass
+	Sfx.play("click")
