@@ -1,0 +1,32 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/shark_ai.gd" id="1_shark"]
+
+[sub_resource type="RectangleShape2D" id="shape_body"]
+size = Vector2(58, 20)
+
+[sub_resource type="RectangleShape2D" id="shape_bite"]
+size = Vector2(78, 30)
+
+[node name="Shark" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 1
+motion_mode = 1
+script = ExtResource("1_shark")
+
+[node name="Collision" type="CollisionShape2D" parent="."]
+shape = SubResource("shape_body")
+
+[node name="Visual" type="Node2D" parent="."]
+
+[node name="Los" type="RayCast2D" parent="."]
+target_position = Vector2(200, 0)
+
+[node name="Bite" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+
+[node name="BiteShape" type="CollisionShape2D" parent="Bite"]
+position = Vector2(6, 0)
+shape = SubResource("shape_bite")

@@ -1,15 +1,15 @@
 extends Node
 ## 存档管理（autoload: SaveManager）。JSON 存档，位于 user:// 目录。
 
-const SAVE_PATH := "user://deepsea_scavenger_save.json"
+var save_path := "user://deepsea_scavenger_save.json"
 
 
 func has_save() -> bool:
-	return FileAccess.file_exists(SAVE_PATH)
+	return FileAccess.file_exists(save_path)
 
 
 func save_game(data: Dictionary) -> bool:
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f == null:
 		push_error("存档写入失败：%s" % FileAccess.get_open_error())
 		return false
@@ -22,7 +22,7 @@ func save_game(data: Dictionary) -> bool:
 func load_game() -> Dictionary:
 	if not has_save():
 		return {}
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var f := FileAccess.open(save_path, FileAccess.READ)
 	if f == null:
 		push_warning("存档读取失败，按无存档处理。")
 		return {}

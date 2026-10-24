@@ -1,0 +1,229 @@
+extends CanvasLayer
+## 水下 HUD：生命 / 体力 / 背包与估值 / 交互与搜索进度 / 危险警告 / 撤离提示 / 飘字。
+
+const MapDataRes := preload("res://scripts/map_data.gd")
+const BalanceRes := preload("res://scripts/balance.gd")
+
+var player: CharacterBody2D
+var dive: Node2D
+
+var _hp_dots: Array = []
+var _stamina_bar: ProgressBar
+var _bag_label: Label
+var _value_label: Label
+var _zone_label: Label
+var _warning_label: Label
+var _prompt_label: Label
+var _search_bar: ProgressBar
+var _extract_label: Label
+var _notice_box: VBoxContainer
+var _t := 0.0
+
+
+func setup(player_ref: CharacterBody2D, dive_ref: Node2D) -> void:
+	player = player_ref
+	dive = dive_ref
+
+
+func _ready() -> void:
+	layer = 5
+	_build()
+
+
+func _build() -> void:
+	# 左上：生命 + 体力
+	var tl := VBoxContainer.new()
+	tl.position = Vector2(16, 12)
+	tl.add_theme_constant_override("separation", 6)
+	add_child(tl)
+
+	var hp_row := HBoxContainer.new()
+	hp_row.add_theme_constant_override("separation", 8)
+	tl.add_child(hp_row)
+	hp_row.add_child(UICommon.label("生命", 18, UICommon.TEXT))
+	var dots := HBoxContainer.new()
+	dots.add_theme_constant_override("separation", 5)
+	hp_row.add_child(dots)
+	for i in 3:
+		var dot := Panel.new()
+		dot.custom_minimum_size = Vector2(18, 18)
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = UICommon.DANGER
+		sb.set_corner_radius_all(4)
+		dot.add_theme_stylebox_override("panel", sb)
+		dots.add_child(dot)
+		_hp_dots.append(dot)
+
+	var stam_row := HBoxContainer.new()
+	stam_row.add_theme_constant_override("separation", 8)
+	tl.add_child(stam_row)
+	stam_row.add_child(UICommon.label("体力", 18, UICommon.TEXT))
+	_stamina_bar = ProgressBar.new()
+	_stamina_bar.custom_minimum_size = Vector2(230, 20)
+	_stamina_bar.show_percentage = false
+	_stamina_bar.max_value = 100.0
+	_stamina_bar.value = 100.0
+	stam_row.add_child(_stamina_bar)
+
+	# 右上：背包 + 估值
+	var tr := VBoxContainer.new()
+	tr.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	tr.position = Vector2(1264 - 220, 12)
+	tr.custom_minimum_size = Vector2(204, 0)
+	tr.alignment = BoxContainer.ALIGNMENT_BEGIN
+	add_child(tr)
+	_bag_label = UICommon.label("背包 0/8", 20)
+	tr.add_child(_bag_label)
+	_value_label = UICommon.label("本次估值 0", 20, UICommon.GOLD)
+	tr.add_child(_value_label)
+
+	# 顶部中央：区域名
+	_zone_label = UICommon.label("", 16, UICommon.DIM)
+	_zone_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_zone_label.anchor_left = 0.5
+	_zone_label.anchor_right = 0.5
+	_zone_label.offset_left = -150
+	_zone_label.offset_right = 150
+	_zone_label.offset_top = 12
+	_zone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_zone_label)
+
+	# 中央大警告
+	_warning_label = UICommon.label("", 26, UICommon.DANGER)
+	_warning_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_warning_label.anchor_left = 0.5
+	_warning_label.anchor_right = 0.5
+	_warning_label.offset_left = -300
+	_warning_label.offset_right = 300
+	_warning_label.offset_top = 90
+	_warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_warning_label.visible = false
+	add_child(_warning_label)
+
+	# 底部中央：交互提示 + 搜索进度 + 撤离提示
+	var bc := VBoxContainer.new()
+	bc.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	bc.anchor_left = 0.5
+	bc.anchor_right = 0.5
+	bc.offset_left = -260
+	bc.offset_right = 260
+	bc.offset_top = -170
+	bc.offset_bottom = -60
+	bc.alignment = BoxContainer.ALIGNMENT_END
+	bc.add_theme_constant_override("separation", 8)
+	add_child(bc)
+
+	_notice_box = VBoxContainer.new()
+	_notice_box.alignment = BoxContainer.ALIGNMENT_END
+	_notice_box.add_theme_constant_override("separation", 2)
+	bc.add_child(_notice_box)
+
+	_prompt_label = UICommon.label("", 20)
+	_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bc.add_child(_prompt_label)
+
+	_search_bar = ProgressBar.new()
+	_search_bar.custom_minimum_size = Vector2(260, 14)
+	_search_bar.show_percentage = false
+	_search_bar.visible = false
+	bc.add_child(_search_bar)
+
+	_extract_label = UICommon.label("按 E 撤离，返回荒岛", 24, UICommon.GOLD)
+	_extract_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_extract_label.visible = false
+	bc.add_child(_extract_label)
+
+	# 右下：操作提示
+	var hint := UICommon.label("WASD 游动 · Shift 冲刺 · 长按 E 搜索 · Tab 背包 · Esc 暂停", 14, UICommon.DIM)
+	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	hint.anchor_left = 1.0
+	hint.anchor_top = 1.0
+	hint.anchor_right = 1.0
+	hint.anchor_bottom = 1.0
+	hint.offset_left = -470
+	hint.offset_top = -30
+	hint.offset_right = -12
+	hint.offset_bottom = -8
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(hint)
+
+
+func _process(delta: float) -> void:
+	_t += delta
+	if player == null or not is_instance_valid(player):
+		return
+
+	# 体力
+	var ratio: float = player.stamina / player.max_stamina if player.max_stamina > 0.0 else 0.0
+	_stamina_bar.value = ratio * 100.0
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = UICommon.DANGER if ratio <= BalanceRes.CRIT_STAMINA_RATIO \
+		else (UICommon.ORANGE if ratio <= BalanceRes.LOW_STAMINA_RATIO else UICommon.CYAN)
+	fill.set_corner_radius_all(4)
+	_stamina_bar.add_theme_stylebox_override("fill", fill)
+
+	# 生命
+	for i in _hp_dots.size():
+		var sb: StyleBoxFlat = _hp_dots[i].get_theme_stylebox("panel")
+		sb.bg_color = UICommon.DANGER if i < player.hp else Color(0.22, 0.2, 0.22)
+
+	# 背包与估值
+	_bag_label.text = "背包 %d/%d" % [GameState.bag_used_slots(), GameState.bag_capacity()]
+	_value_label.text = "本次估值 %d" % GameState.dive_total_value()
+
+	# 区域
+	if dive != null and is_instance_valid(player):
+		_zone_label.text = MapDataRes.zone_name(MapDataRes.zone_at(player.global_position.x))
+
+	# 交互与搜索
+	var searching: bool = player.is_searching() and player.active_chest != null \
+		and is_instance_valid(player.active_chest)
+	if searching:
+		_prompt_label.text = "正在搜索：%s" % player.active_chest.interact_prompt()
+		_search_bar.visible = true
+		_search_bar.value = player.active_chest.search_ratio() * 100.0
+	elif player.focus_target != null:
+		if player.focus_target.has_method("begin_search"):
+			if player.focus_target.can_search(player):
+				_prompt_label.text = "长按 E 搜索：%s（占 %d 格）" \
+					% [player.focus_target.interact_prompt(),
+					int(ItemDB.TREASURES[player.focus_target.treasure_id]["slots"])]
+			else:
+				_prompt_label.text = player.focus_target.blocked_reason()
+		else:
+			_prompt_label.text = "按 E：%s" % player.focus_target.interact_prompt()
+		_search_bar.visible = false
+	else:
+		_prompt_label.text = ""
+		_search_bar.visible = false
+
+	# 撤离提示
+	_extract_label.visible = dive != null and dive.in_extraction and not dive.ended
+
+	# 危险警告（优先级：鲨鱼 > 重度低体力 > 低体力）
+	if dive != null and dive.any_shark_alerting():
+		_show_warning("危险！鲨鱼发现了你！", UICommon.DANGER)
+	elif ratio <= BalanceRes.CRIT_STAMINA_RATIO:
+		_show_warning("体力即将耗尽！立即返航！", UICommon.DANGER)
+	elif ratio <= BalanceRes.LOW_STAMINA_RATIO:
+		_show_warning("体力不足，建议返航", UICommon.ORANGE)
+	else:
+		_warning_label.visible = false
+
+
+func _show_warning(text: String, color: Color) -> void:
+	_warning_label.text = text
+	_warning_label.add_theme_color_override("font_color", color)
+	_warning_label.modulate.a = 0.55 + 0.45 * sin(_t * 9.0)
+	_warning_label.visible = true
+
+
+## 飘字提示（拾取、空间不足等），1.4 秒后消失。
+func spawn_notice(text: String, color: Color) -> void:
+	var l := UICommon.label(text, 20, color)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_notice_box.add_child(l)
+	var tween := create_tween()
+	tween.tween_interval(0.9)
+	tween.tween_property(l, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(l.queue_free)

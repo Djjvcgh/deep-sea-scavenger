@@ -196,9 +196,9 @@ func _test_save_roundtrip() -> int:
 	print("[存档]")
 	var gs = root.get_node("GameState")
 	var sm = root.get_node("SaveManager")
-	sm.set("SAVE_PATH", "user://test_save.json")
-	if FileAccess.file_exists(sm.get("SAVE_PATH")):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(sm.get("SAVE_PATH")))
+	sm.set("save_path", "user://test_save.json")
+	if FileAccess.file_exists(sm.get("save_path")):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(sm.get("save_path")))
 
 	_check(sm.load_game().is_empty(), "无存档时返回空")
 	gs.reset_defaults()
@@ -218,7 +218,7 @@ func _test_save_roundtrip() -> int:
 	_check(gs.materials["wood"] == 2 and gs.boat_invested["wood"] == 1, "材料与造船进度正确")
 
 	# 损坏与缺字段
-	var path: String = sm.get("SAVE_PATH")
+	var path: String = sm.get("save_path")
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string("{{{不是json")
 	f.close()
