@@ -7,6 +7,7 @@ const BalanceRes := preload("res://scripts/balance.gd")
 const ItemDBRes := preload("res://scripts/item_db.gd")
 const PlayerScript := preload("res://scripts/player.gd")
 const WreckGenRes := preload("res://scripts/wreck_gen.gd")
+const CaveGenRes := preload("res://scripts/cave_gen.gd")
 
 const ChestScene := preload("res://scenes/treasure_chest.tscn")
 const SharkScene := preload("res://scenes/shark.tscn")
@@ -44,6 +45,17 @@ const WRECK_CHEST_STYLE := {
 	"ritual": {"name": "祭祀宝箱", "glow": Color(0.7, 0.4, 0.85, 0.85)},
 }
 
+# 洞穴宝箱展示样式与发现提示配色
+const CAVE_CHEST_STYLE := {
+	"treasure": {"name": "隐藏宝箱", "glow": Color(0.4, 0.95, 0.7, 0.8)},
+	"danger": {"name": "深渊宝箱", "glow": Color(0.85, 0.35, 0.6, 0.85)},
+}
+const CAVE_NOTICE_COLORS := {
+	"shelter": Color(0.6, 0.85, 0.75), "treasure": Color(0.4, 0.95, 0.7),
+	"danger": Color(0.95, 0.45, 0.6), "hang_shelter": Color(0.6, 0.85, 0.75),
+	"hang_treasure": Color(0.4, 0.95, 0.7), "hang_danger": Color(0.95, 0.45, 0.6),
+}
+
 var player: CharacterBody2D
 var hud: CanvasLayer
 var inventory_panel: CanvasLayer
@@ -62,6 +74,9 @@ var _chosen := {}              # zone -> {"index": int, "variant": Dictionary}
 var _wrecks: Array = []        # 本次下潜生成的沉船遗址（WreckGen.generate 结果）
 var _wreck_solids := {}        # zone -> 沉船实体矩形（并入地形系统）
 var _wreck_seen := {}          # 已提示过发现的沉船下标
+var _caves: Array = []         # 本次下潜生成的洞穴（CaveGen.generate 结果）
+var _cave_solids := {}         # zone -> 洞穴实体矩形（并入地形系统）
+var _cave_seen := {}           # 已提示过发现的洞穴下标
 var _extract_area: Area2D
 var _seaweeds: Array = []
 var _bubbles: Array = []
@@ -90,6 +105,7 @@ func _ready() -> void:
 	_build_extraction()
 	_spawn_chests()
 	_spawn_wreck_containers()
+	_spawn_cave_chests()
 	_spawn_containers()
 	_spawn_cache()
 	_spawn_sharks()
@@ -131,9 +147,13 @@ func _exit_tree() -> void:
 
 
 ## 每次下潜的随机种子决定三个区域各用哪套布局变体（"海况"）。
+## 环境变量 DEEPSEA_SEED 可固定种子，供自动化测试复现同一张地图。
 func _roll_layout() -> void:
 	_rng.randomize()
 	dive_seed = _rng.randi()
+	var env_seed := OS.get_environment("DEEPSEA_SEED")
+	if env_seed != "":
+		dive_seed = int(env_seed)
 	_rng.seed = dive_seed
 	_chosen = {}
 	# 海况色调：每潜微调水色/沙色/岩色，让不同下潜一眼可辨
@@ -150,6 +170,19 @@ func _roll_layout() -> void:
 	for w in _wrecks:
 		for r in w["rects"]:
 			_wreck_solids[w["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, "wreck"])
+	# 洞穴：2~4 处（海床岩洞 / 深渊悬洞），避让沉船与既有地形
+	_caves = CaveGenRes.generate(_rng, _chosen, _all_wreck_rects())
+	_cave_solids = {"A": [], "B": [], "C": []}
+	for c in _caves:
+		for r in c["rects"]:
+			_cave_solids[c["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, "rock"])
+
+
+func _all_wreck_rects() -> Array:
+	var out: Array = []
+	for w in _wrecks:
+		out.append_array(w["rects"])
+	return out
 
 
 func get_zone_label() -> String:
@@ -195,7 +228,7 @@ func _physics_process(delta: float) -> void:
 	_update_boss_trigger(delta)
 
 
-## 进入沉船内部时的一次性发现提示。
+## 进入沉船/洞穴内部时的一次性发现提示。
 func _update_wreck_discovery() -> void:
 	for wi in _wrecks.size():
 		if _wreck_seen.has(wi):
@@ -205,6 +238,15 @@ func _update_wreck_discovery() -> void:
 			_wreck_seen[wi] = true
 			var wname: String = MapDataRes.WRECK_TEMPLATES[_wrecks[wi]["kind"]]["name"]
 			hud.spawn_notice("发现沉船遗址：%s" % wname, UICommon.GOLD)
+			Sfx.play("click", -4.0)
+	for ci in _caves.size():
+		if _cave_seen.has(ci):
+			continue
+		var cave_interior: Rect2 = _caves[ci]["interior"]
+		if cave_interior.grow(8.0).has_point(player.global_position):
+			_cave_seen[ci] = true
+			var cname: String = MapDataRes.CAVE_TEMPLATES[_caves[ci]["kind"]]["name"]
+			hud.spawn_notice("发现%s" % cname, CAVE_NOTICE_COLORS[_caves[ci]["kind"]])
 			Sfx.play("click", -4.0)
 
 
@@ -414,6 +456,37 @@ func _disturb_sharks(from_pos: Vector2) -> void:
 			s.disturb()
 
 
+## 洞穴宝箱：隐藏洞穴 / 深海危险洞穴各有洞内宝箱（藏身岩洞无）。
+func _spawn_cave_chests() -> void:
+	for cave in _caves:
+		if cave["spots"].is_empty():
+			continue
+		var pool_key := "treasure" if cave["kind"] in ["treasure", "hang_treasure"] else "danger"
+		var style: Dictionary = CAVE_CHEST_STYLE[pool_key]
+		var c := ChestScene.instantiate()
+		c.position = cave["spots"][0]
+		add_child(c)
+		c.setup_container({
+			"kind": "chest",
+			"name": String(style["name"]),
+			"search_time": float(ItemDBRes.CONTAINERS["chest"]["search_time"]),
+			"loot": func() -> Array: return _roll_cave_loot(pool_key),
+			"glow": style["glow"],
+		})
+
+
+func _roll_cave_loot(pool_key: String) -> Array:
+	var cfg: Dictionary = ItemDBRes.CAVE_LOOT[pool_key]
+	var out: Array = []
+	var count := int(_weighted_roll(cfg["count"]))
+	for i in count:
+		out.append({
+			"id": String(_weighted_roll(cfg["pool"])),
+			"quality": String(_weighted_roll(ItemDBRes.WRECK_QUALITY_WEIGHTS[cfg["quality"]])),
+		})
+	return out
+
+
 ## 小型容器（海贝/垃圾袋）：按种子沿海床散布，避开实体与宝箱点。
 func _spawn_containers() -> void:
 	var solids := _all_solids()
@@ -541,7 +614,8 @@ func _chosen_zone_solids_patrols() -> Array:
 
 
 func _solids_for(zone: String) -> Array:
-	return MapDataRes.variant_solids(zone, _chosen[zone]["index"]) + _wreck_solids.get(zone, [])
+	return MapDataRes.variant_solids(zone, _chosen[zone]["index"]) \
+		+ _wreck_solids.get(zone, []) + _cave_solids.get(zone, [])
 
 
 func _all_solids() -> Array:

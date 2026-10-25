@@ -247,6 +247,59 @@ const WRECK_ANCHOR_CHANCE := 0.8
 const WRECK_FLOOR_Y := 950.0
 
 
+## ---- V0.4 可探索洞穴 ----
+## 两类形态：floor 海床岩洞（锚点=洞口地面中心，y=0 海床顶）；hang 深渊悬洞
+## （锚点=区域C巨型岩体底面 y=520 的挂点，洞体向下悬挑，顶盖即岩体）。
+## rects 形成遮挡腔体；spots 为洞内宝箱点；door_y 为入洞口高度区间（校验用）。
+const CAVE_TEMPLATES := {
+	"shelter": {
+		"name": "藏身岩洞", "mode": "floor",
+		"rects": [[26, -140, 30, 140], [-140, -166, 196, 26], [-140, -140, 30, 80]],
+		"spots": [], "interior": Rect2(-80, -140, 106, 140),
+	},
+	"treasure": {
+		"name": "隐藏洞穴", "mode": "floor",
+		"rects": [[40, -170, 30, 170], [-150, -196, 220, 26], [-150, -170, 30, 100]],
+		"spots": [Vector2(-70, -30)], "interior": Rect2(-110, -170, 150, 170),
+	},
+	"danger": {
+		"name": "深海危险洞穴", "mode": "floor",
+		"rects": [[60, -210, 34, 210], [-180, -236, 274, 26], [-180, -210, 34, 130]],
+		"spots": [Vector2(-30, -30)], "interior": Rect2(-146, -210, 206, 210),
+	},
+	"hang_shelter": {
+		"name": "悬空藏身龛", "mode": "hang",
+		"rects": [[40, 0, 30, 150], [-90, 0, 30, 100]],
+		"spots": [], "interior": Rect2(-60, 0, 100, 150),
+	},
+	"hang_treasure": {
+		"name": "悬空宝藏龛", "mode": "hang",
+		"rects": [[50, 0, 30, 180], [-110, 0, 30, 120], [-20, 150, 40, 30]],
+		"spots": [Vector2(-30, 70)], "interior": Rect2(-80, 0, 130, 180),
+	},
+	"hang_danger": {
+		"name": "深渊危险洞穴", "mode": "hang",
+		"rects": [[60, 0, 34, 210], [-130, 0, 34, 130], [-20, 150, 50, 60]],
+		"spots": [Vector2(-45, 90)], "interior": Rect2(-96, 0, 156, 210),
+	},
+}
+
+## 洞穴类型权重；floor 模式下 danger 更稀有
+const CAVE_KIND_WEIGHTS := {
+	"floor": {"shelter": 0.45, "treasure": 0.35, "danger": 0.20},
+	"hang": {"hang_shelter": 0.40, "hang_treasure": 0.35, "hang_danger": 0.25},
+}
+
+## 深渊悬洞挂面：区域C岩体 [3500,-200,1620,720] 的底缘
+const HANG_SURFACE_Y := 520.0
+const HANG_X_RANGE := [3580.0, 5020.0]
+## 海床洞穴的候选区间（A 海床宝箱过密通常放不下，靠拒绝采样兜底）
+const FLOOR_CAVE_ZONES := {
+	"A": {"floor_y": 800.0, "x_range": [140.0, 1560.0]},
+	"B": {"floor_y": 950.0, "x_range": [1800.0, 2820.0]},
+}
+
+
 ## 共享骨架 + 指定变体的完整实体地形
 static func variant_solids(zone: String, index: int) -> Array:
 	var v: Dictionary = ZONE_VARIANTS[zone][index]

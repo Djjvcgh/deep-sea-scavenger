@@ -154,8 +154,8 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	# 咬击：与玩家接触且冷却结束（脱离期/逃窜期不咬）。
-	if _attack_cd <= 0.0 and _retreat_left <= 0.0 and state != State.FLEE \
+	# 咬击：与玩家接触、视线无遮挡且冷却结束（脱离期/逃窜期不咬；岩壁隔开时咬不到）。
+	if can_see and _attack_cd <= 0.0 and _retreat_left <= 0.0 and state != State.FLEE \
 			and target_valid and bite.overlaps_body(player):
 		_attack_cd = BalanceRes.SHARK_ATTACK_COOLDOWN
 		_retreat_left = BalanceRes.SHARK_BITE_RETREAT

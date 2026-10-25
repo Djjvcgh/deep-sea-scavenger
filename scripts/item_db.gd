@@ -175,3 +175,17 @@ const WRECK_QUALITY_WEIGHTS := {
 	"C": {"worn": 10, "standard": 35, "fine": 35, "pristine": 20},
 	"captain": {"worn": 0, "standard": 25, "fine": 45, "pristine": 30},
 }
+
+# ---- V0.4 洞穴掉落池（隐藏洞穴 / 深海危险洞穴；藏身岩洞无宝箱） ----
+const CAVE_LOOT := {
+	"treasure": {
+		"count": {2: 6, 3: 4},
+		"pool": {"gold_cup": 0.40, "silver_platter": 0.35, "bronze_coins": 0.25},
+		"quality": "B",
+	},
+	"danger": {
+		"count": {2: 5, 3: 5},
+		"pool": {"serpent_pearl": 0.35, "gold_sextant": 0.25, "gold_cup": 0.40},
+		"quality": "C",
+	},
+}

@@ -16,6 +16,7 @@ func _initialize() -> void:
 	failures += _test_map_data()
 	failures += _test_icons()
 	failures += _test_wrecks()
+	failures += _test_caves()
 	failures += _test_loot_randomness()
 	_print_result()
 	quit(1 if failures > 0 else 0)
@@ -491,6 +492,79 @@ func _test_wrecks() -> int:
 	_check(kind_seen.size() == 3, "三种沉船类型都出现过（实际 %d 种）" % kind_seen.size())
 	_check(total > 80, "200 局共生成 %d 艘沉船（激活率合理）" % total)
 	return 0
+
+
+func _test_caves() -> int:
+	print("[随机洞穴]")
+	var CaveGenC = load("res://scripts/cave_gen.gd")
+	var WreckGenC = load("res://scripts/wreck_gen.gd")
+	# 模板结构不变量：腔体非空；宝箱点在腔体内且不撞洞体；
+	# 海床洞穴腔体直达地面（可走出）；悬洞洞体全部挂在挂面之下
+	for kind in MapData.CAVE_TEMPLATES:
+		var tpl: Dictionary = MapData.CAVE_TEMPLATES[kind]
+		var interior: Rect2 = tpl["interior"]
+		_check(interior.size.x > 0 and interior.size.y > 0, "%s 腔体非空" % kind)
+		var spot_fail := 0
+		for s in tpl["spots"]:
+			if not interior.has_point(s):
+				_check_quiet(false, "%s 宝箱点 %s 不在腔体内" % [kind, s])
+				spot_fail += 1
+			for r in tpl["rects"]:
+				if WreckGenC._circle_vs_rect(s, 24.0, Rect2(r[0], r[1], r[2], r[3])):
+					_check_quiet(false, "%s 宝箱点 %s 撞洞体 %s" % [kind, s, r])
+					spot_fail += 1
+		_check(spot_fail == 0, "%s 洞内宝箱点合法" % kind)
+		if tpl["mode"] == "floor":
+			_check(is_equal_approx(interior.end.y, 0.0), "%s 腔体直达海床（可进出）" % kind)
+		else:
+			var above := 0
+			for r in tpl["rects"]:
+				if r[1] < 0.0:
+					above += 1
+			_check(above == 0, "%s 洞体全部位于挂面之下" % kind)
+
+	# 200 种子：生成 2~4 处并逐洞校验合法性（含与沉船的互避）
+	var total := 0
+	var kinds_seen := {}
+	var invalid := 0
+	for seed_i in 200:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = seed_i
+		var chosen := {}
+		for zone in ["A", "B", "C"]:
+			var idx := rng.randi_range(0, MapData.ZONE_VARIANTS[zone].size() - 1)
+			chosen[zone] = {"index": idx, "variant": MapData.ZONE_VARIANTS[zone][idx]}
+		var wrecks: Array = WreckGenC.generate(rng, chosen)
+		var caves: Array = CaveGenC.generate(rng, chosen, _wreck_rect_list(wrecks))
+		total += caves.size()
+		if caves.size() < 2:
+			invalid += 1
+		for ci in caves.size():
+			var cave: Dictionary = caves[ci]
+			kinds_seen[cave["kind"]] = true
+			var others: Array = _wreck_rect_list(wrecks)
+			for cj in caves.size():
+				if cj != ci:
+					others.append_array(caves[cj]["rects"])
+			var tpl: Dictionary = MapData.CAVE_TEMPLATES[cave["kind"]]
+			var zone: String = cave["zone"]
+			var v: Dictionary = chosen[zone]["variant"]
+			if not CaveGenC._placement_ok(cave["rects"], cave["anchor"], tpl,
+					MapData.variant_solids(zone, chosen[zone]["index"]),
+					v["chests"], v["patrols"], others):
+				_check_quiet(false, "洞穴非法：种子%d %s@%s" % [seed_i, cave["kind"], cave["anchor"]])
+				invalid += 1
+	_check(invalid == 0, "200 种子洞穴全部合法且每局 ≥2 处（异常 %d）" % invalid)
+	_check(total >= 500, "200 局共 %d 处洞穴（平均 ≥2.5）" % total)
+	_check(kinds_seen.size() >= 4, "洞穴类型覆盖 ≥4 种（实际 %d）" % kinds_seen.size())
+	return 0
+
+
+func _wreck_rect_list(wrecks: Array) -> Array:
+	var out: Array = []
+	for w in wrecks:
+		out.append_array(w["rects"])
+	return out
 
 
 func _test_loot_randomness() -> int:
