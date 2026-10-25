@@ -247,15 +247,18 @@ func set_camera_limits(left: int, top: int, right: int, bottom: int) -> void:
 
 func _animate() -> void:
 	var speed := velocity.length()
-	if mode == Mode.SWIM and speed > 12.0:
-		visual.rotation = lerp_angle(visual.rotation, velocity.angle(), 8.0 * get_physics_process_delta_time())
-		visual.scale.x = 1.0
+	if mode == Mode.SWIM:
+		# 镜像到水平朝向；倾角补偿镜像（面朝 -x 时角度差 PI），任何方向都头朝前
+		if absf(velocity.x) > 5.0:
+			visual.scale.x = signf(velocity.x)
+		var target_rot := 0.0
+		if speed > 12.0:
+			target_rot = velocity.angle() if visual.scale.x > 0.0 else velocity.angle() - PI
+		visual.rotation = lerp_angle(visual.rotation, target_rot, 8.0 * get_physics_process_delta_time())
 	elif mode == Mode.WALK:
 		visual.rotation = 0.0
 		if absf(velocity.x) > 5.0:
 			visual.scale.x = signf(velocity.x)
-	else:
-		visual.rotation = lerp_angle(visual.rotation, 0.0, 6.0 * get_physics_process_delta_time())
 	var kick := sin(_anim_t * (7.0 if speed > 12.0 else 2.5))
 	if _fin_a != null:
 		_fin_a.rotation = kick * 0.5
@@ -281,7 +284,8 @@ func _build_visual() -> void:
 		_build_walk_visual()
 
 
-## 潜水姿态：水平，头在左、脚蹼在右。
+## 潜水姿态：水平，头在右（面朝 +x）、脚蹼在左；
+## 游动时镜像到水平朝向并按速度倾角旋转，保证任何方向都是头朝前。
 func _build_swim_visual() -> void:
 	var body := Polygon2D.new()
 	body.name = "Body"
@@ -291,29 +295,29 @@ func _build_swim_visual() -> void:
 
 	var head := Polygon2D.new()
 	head.polygon = _ellipse(7.0, 6.5)
-	head.position = Vector2(-15, -2)
+	head.position = Vector2(15, -2)
 	head.color = Color(0.45, 0.31, 0.21)
 	visual.add_child(head)
 
 	var mask := Polygon2D.new()
-	mask.polygon = PackedVector2Array([Vector2(-22, -5), Vector2(-13, -6), Vector2(-13, -1), Vector2(-22, 0)])
+	mask.polygon = PackedVector2Array([Vector2(13, -6), Vector2(22, -5), Vector2(22, 0), Vector2(13, -1)])
 	mask.color = Color(0.35, 0.8, 0.85)
 	visual.add_child(mask)
 
 	var tank := Polygon2D.new()
-	tank.polygon = PackedVector2Array([Vector2(-8, -8), Vector2(4, -8), Vector2(4, -4), Vector2(-8, -4)])
+	tank.polygon = PackedVector2Array([Vector2(-4, -8), Vector2(8, -8), Vector2(8, -4), Vector2(-4, -4)])
 	tank.color = Color(0.55, 0.58, 0.62)
 	visual.add_child(tank)
 
-	_fin_a = _make_fin(Vector2(14, -3))
-	_fin_b = _make_fin(Vector2(14, 4))
+	_fin_a = _make_fin(Vector2(-14, -3))
+	_fin_b = _make_fin(Vector2(-14, 4))
 
 
 func _make_fin(pivot_pos: Vector2) -> Node2D:
 	var pivot := Node2D.new()
 	pivot.position = pivot_pos
 	var fin := Polygon2D.new()
-	fin.polygon = PackedVector2Array([Vector2(0, -2), Vector2(17, 2), Vector2(0, 3)])
+	fin.polygon = PackedVector2Array([Vector2(0, -2), Vector2(-17, 2), Vector2(0, 3)])
 	fin.color = Color(0.75, 0.68, 0.3)
 	pivot.add_child(fin)
 	visual.add_child(pivot)
