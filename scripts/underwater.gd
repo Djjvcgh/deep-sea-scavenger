@@ -49,6 +49,7 @@ var _canvas_mod: CanvasModulate
 var _shadow_t := 0.0
 var _tension_on := false
 var _tex_cache := {}
+var _used_rect_cache := {}
 
 
 func _ready() -> void:
@@ -266,14 +267,15 @@ func _build_environment() -> void:
 	dark.z_index = -19
 	add_child(dark)
 
-	# 浅海光柱
+	# 浅海光柱（锥形，弱化边界感）
 	for shaft in MapDataRes.LIGHT_SHAFTS:
 		var poly := Polygon2D.new()
 		var x: float = shaft[0]
 		var w: float = shaft[1]
 		poly.polygon = PackedVector2Array([
-			Vector2(x, 0), Vector2(x + w, 0), Vector2(x + w + 60, 420), Vector2(x - 60, 420)])
-		poly.color = Color(1, 1, 0.9, 0.06)
+			Vector2(x + w * 0.3, 0), Vector2(x + w * 0.7, 0),
+			Vector2(x + w * 1.4, 420), Vector2(x - w * 0.4, 420)])
+		poly.color = Color(1, 1, 0.9, 0.045)
 		poly.z_index = -15
 		add_child(poly)
 
@@ -430,6 +432,74 @@ func _tiled(tex_name: String, rect: Rect2, mod: Color) -> Sprite2D:
 	return s
 
 
+func _used_rect(tex: Texture2D) -> Rect2:
+	## 素材在 64x64 画布中的实际不透明区域（blob），用于贴图对齐与碰撞成形
+	var key := tex.resource_path
+	if not _used_rect_cache.has(key):
+		var img := tex.get_image()
+		if img.is_compressed():
+			img.decompress()
+		_used_rect_cache[key] = Rect2(img.get_used_rect())
+	return _used_rect_cache[key]
+
+
+## 小块岩石：blob 底部对齐矩形，碰撞用内切六边形贴合石头外形（不再有空气墙）。
+func _add_rock_blob(body: StaticBody2D, rect: Rect2) -> void:
+	var tex: Texture2D = _tex("rock_%s" % ["a", "b"][_rng.randi_range(0, 1)])
+	var blob := _used_rect(tex)
+	var s := rect.size.x / blob.size.x
+	var spr := Sprite2D.new()
+	spr.texture = tex
+	spr.scale = Vector2.ONE * s
+	spr.flip_h = _rng.randf() < 0.5
+	var blob_center_offset := blob.get_center() - Vector2(32, 32)   # 相对贴图中心
+	var target := Vector2(rect.get_center().x, rect.end.y - blob.size.y * s * 0.5)
+	spr.position = target - blob_center_offset * s
+	spr.modulate = Color(0.62, 0.68, 0.78)
+	spr.z_index = 0
+	body.add_child(spr)
+
+	var w := blob.size.x * s * 0.92
+	var h := blob.size.y * s * 0.9
+	var cx := rect.get_center().x
+	var cy := rect.end.y - h * 0.5
+	var hull := ConvexPolygonShape2D.new()
+	hull.points = PackedVector2Array([
+		Vector2(cx - w * 0.26, cy - h * 0.5), Vector2(cx + w * 0.26, cy - h * 0.5),
+		Vector2(cx + w * 0.5, cy - h * 0.08), Vector2(cx + w * 0.44, cy + h * 0.5),
+		Vector2(cx - w * 0.44, cy + h * 0.5), Vector2(cx - w * 0.5, cy - h * 0.08)])
+	var cs := CollisionShape2D.new()
+	cs.shape = hull
+	body.add_child(cs)
+
+
+## 沙地逐格铺装：随机顶盖与填充变体 + 明度抖动，打破平铺图案感。
+func _sand_grid(body: StaticBody2D, rect: Rect2, mod: Color) -> void:
+	var cols := int(ceil(rect.size.x / 64.0))
+	var rows := int(ceil(rect.size.y / 64.0))
+	for cy in rows:
+		for cx in cols:
+			var pos := rect.position + Vector2(cx * 64.0, cy * 64.0)
+			var size := Vector2(
+				minf(64.0, rect.end.x - pos.x),
+				minf(64.0, rect.end.y - pos.y))
+			var tex_name: String
+			if cy == 0:
+				tex_name = "terrain_sand_top_%s" % SAND_TOPS[_rng.randi_range(0, 7)]
+			else:
+				tex_name = "terrain_sand_%s" % SAND_FILL[_rng.randi_range(0, 3)]
+			var spr := Sprite2D.new()
+			spr.texture = _tex(tex_name)
+			spr.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+			spr.region_enabled = true
+			spr.region_rect = Rect2(Vector2.ZERO, size)
+			spr.centered = false
+			spr.position = pos
+			var b := _rng.randf_range(0.92, 1.0)
+			spr.modulate = Color(mod.r * b, mod.g * b, mod.b * b)
+			body.add_child(spr)
+
+
 func _build_terrain() -> void:
 	var body := StaticBody2D.new()
 	body.name = "Terrain"
@@ -439,6 +509,10 @@ func _build_terrain() -> void:
 		for r in _solids_for(zone):
 			var rect := Rect2(r[0], r[1], r[2], r[3])
 			var kind: String = r[4]
+			if kind == "rock" and rect.size.x <= 150.0 and rect.size.y <= 150.0:
+				_add_rock_blob(body, rect)
+				continue
+
 			var cs := CollisionShape2D.new()
 			var shape := RectangleShape2D.new()
 			shape.size = rect.size
@@ -449,28 +523,17 @@ func _build_terrain() -> void:
 			var edge := Color(0.2, 0.28, 0.33)
 			if kind == "sand":
 				edge = Color(0.5, 0.45, 0.3)
-				_terrain_tiles(rect, "terrain_sand_%s" % SAND_FILL[_rng.randi_range(0, 3)],
-					"terrain_sand_top_%s" % SAND_TOPS[_rng.randi_range(0, 7)], Color.WHITE)
+				_sand_grid(body, rect, Color.WHITE)
 			elif kind == "wreck":
 				edge = Color(0.38, 0.27, 0.15)
 				_terrain_tiles(rect, "terrain_dirt_%s" % SAND_FILL[_rng.randi_range(0, 3)],
 					"terrain_dirt_top_%s" % DIRT_TOPS[_rng.randi_range(0, 7)],
 					Color(0.78, 0.6, 0.45))
-			elif rect.size.x <= 150.0 and rect.size.y <= 150.0:
-				# 小块岩石：整块素材铺贴
-				var spr := Sprite2D.new()
-				spr.texture = _tex("rock_%s" % ["a", "b"][_rng.randi_range(0, 1)])
-				spr.scale = rect.size / 64.0
-				spr.position = rect.get_center()
-				spr.flip_h = _rng.randf() < 0.5
-				spr.modulate = Color(0.82, 0.86, 0.92)
-				spr.z_index = 0
-				body.add_child(spr)
 			else:
 				edge = Color(0.24, 0.3, 0.38)
 				_terrain_tiles(rect, "terrain_dirt_%s" % SAND_FILL[_rng.randi_range(0, 3)],
 					"terrain_dirt_top_%s" % DIRT_TOPS[_rng.randi_range(0, 7)],
-					Color(0.6, 0.65, 0.76))
+					Color(0.52, 0.58, 0.68))
 
 			var top_line := Line2D.new()
 			top_line.points = PackedVector2Array([rect.position, rect.position + Vector2(rect.size.x, 0)])
