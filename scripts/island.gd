@@ -1,6 +1,7 @@
 extends Node2D
 ## 荒岛基地：安全区域（不消耗体力）。
 ## 包含：下潜点、神秘商人、装备工作台、船坞；永久数据在此自动存档。
+## 岛屿横向 2600px，摄像机平滑跟随（摄像机由 player.gd 持有，limit 限制在世界内）。
 
 const PlayerScript := preload("res://scripts/player.gd")
 const PlayerScene := preload("res://scenes/player.tscn")
@@ -11,6 +12,10 @@ const UpgradesScene := preload("res://scenes/ui/upgrades_panel.tscn")
 const BoatPanelScene := preload("res://scenes/ui/boat_builder_panel.tscn")
 
 const GROUND_Y := 560.0
+const ISLAND_WIDTH := 2600.0
+# 左右海水区（下潜点在左海滩，船坞滑道朝右海湾）
+const SEA_LEFT_END := 300.0
+const SEA_RIGHT_START := 2380.0
 
 var player: CharacterBody2D
 var pause_menu: CanvasLayer
@@ -32,10 +37,10 @@ func _ready() -> void:
 
 	player = PlayerScene.instantiate()
 	player.mode = PlayerScript.Mode.WALK
-	player.position = Vector2(240, 500)
+	player.position = Vector2(420, 500)
 	player.z_index = 5
 	add_child(player)
-	player.set_camera_limits(0, 0, 1280, 720)
+	player.set_camera_limits(0, 0, int(ISLAND_WIDTH), 720)
 
 	merchant_panel = MerchantScene.instantiate()
 	add_child(merchant_panel)
@@ -48,11 +53,11 @@ func _ready() -> void:
 	for p in _panels:
 		p.closed.connect(_on_panel_closed)
 
-	_add_interactable("下潜点", Vector2(150, 520),
+	_add_interactable("下潜点", Vector2(160, 520),
 		func() -> void: get_tree().change_scene_to_file("res://scenes/underwater.tscn"))
-	_add_interactable("神秘商人", Vector2(560, 524), func() -> void: _open_panel(merchant_panel))
-	_add_interactable("装备工作台", Vector2(820, 524), func() -> void: _open_panel(upgrades_panel))
-	_add_interactable("船坞", Vector2(1060, 524), func() -> void: _open_panel(boat_panel))
+	_add_interactable("神秘商人", Vector2(950, 524), func() -> void: _open_panel(merchant_panel))
+	_add_interactable("装备工作台", Vector2(1600, 524), func() -> void: _open_panel(upgrades_panel))
+	_add_interactable("船坞", Vector2(2280, 524), func() -> void: _open_panel(boat_panel))
 
 	_build_status_bar()
 	pause_menu = PauseScene.instantiate()
@@ -154,34 +159,65 @@ func _build_environment() -> void:
 	tex.fill_to = Vector2(0, 1)
 	var sky := TextureRect.new()
 	sky.texture = tex
-	sky.size = Vector2(1280, GROUND_Y)
+	sky.size = Vector2(ISLAND_WIDTH, GROUND_Y)
 	sky.z_index = -20
 	add_child(sky)
 
 	var sun := Polygon2D.new()
 	sun.polygon = _ellipse(36.0, 36.0, 16)
-	sun.position = Vector2(1080, 110)
+	sun.position = Vector2(2050, 110)
 	sun.color = Color(0.98, 0.9, 0.6)
 	sun.z_index = -18
 	add_child(sun)
 
+	# 远景云（缓慢飘动的感觉由静态形状分层即可，不引入额外系统）
+	for cx in [700.0, 1500.0, 2200.0]:
+		var cloud := Polygon2D.new()
+		cloud.polygon = PackedVector2Array([
+			Vector2(-70, 0), Vector2(-40, -18), Vector2(10, -26), Vector2(60, -12),
+			Vector2(80, 0), Vector2(40, 8), Vector2(-40, 8)])
+		cloud.position = Vector2(cx, 150.0 + 30.0 * sin(cx))
+		cloud.color = Color(1, 1, 1, 0.5)
+		cloud.z_index = -17
+		add_child(cloud)
+
+	_build_sea(SEA_LEFT_END - 300.0, SEA_LEFT_END, true)
+	_build_sea(SEA_RIGHT_START, ISLAND_WIDTH, false)
+
+	for x in [560.0, 1240.0, 1900.0, 2500.0]:
+		_add_palm(x)
+
+	# 沿途装饰：礁石 / 草丛 / 漂木 / 海星，让 2600px 的行走有内容
+	var decor := [
+		["rock", 700.0], ["grass", 820.0], ["drift", 1130.0], ["grass", 1400.0],
+		["rock", 1750.0], ["grass", 2050.0], ["drift", 2470.0], ["star", 260.0], ["star", 2420.0]]
+	for d in decor:
+		_add_decor(d[0], d[1])
+
+
+func _build_sea(x0: float, x1: float, has_dive_beach: bool) -> void:
 	var sea := Polygon2D.new()
-	sea.polygon = PackedVector2Array([Vector2(0, 420), Vector2(260, 430), Vector2(260, GROUND_Y), Vector2(0, GROUND_Y)])
+	sea.polygon = PackedVector2Array([
+		Vector2(x0, 420), Vector2(x1 - 40, 430), Vector2(x1, 445),
+		Vector2(x1, GROUND_Y), Vector2(x0, GROUND_Y)])
+	if not has_dive_beach:
+		sea.polygon = PackedVector2Array([
+			Vector2(x0, 445), Vector2(x0 + 40, 430), Vector2(x1, 420),
+			Vector2(x1, GROUND_Y), Vector2(x0, GROUND_Y)])
 	sea.color = Color(0.12, 0.42, 0.5)
 	sea.z_index = -16
 	add_child(sea)
 	for i in 3:
 		var line := Line2D.new()
 		var y := 445.0 + i * 28.0
-		line.points = PackedVector2Array([Vector2(10, y), Vector2(80, y), Vector2(150, y), Vector2(230, y)])
+		line.points = PackedVector2Array([
+			Vector2(x0 + 10, y), Vector2(x0 + (x1 - x0) * 0.35, y),
+			Vector2(x0 + (x1 - x0) * 0.7, y), Vector2(x1 - 12, y)])
 		line.width = 2.0
 		line.default_color = Color(1, 1, 1, 0.35)
 		line.z_index = -15
 		add_child(line)
-		_waves.append({"line": line, "base_y": y, "phase": i * 2.1})
-
-	for x in [400.0, 740.0]:
-		_add_palm(x)
+		_waves.append({"line": line, "base_y": y, "phase": i * 2.1 + (0.0 if has_dive_beach else 1.3)})
 
 
 func _add_palm(x: float) -> void:
@@ -200,30 +236,66 @@ func _add_palm(x: float) -> void:
 	add_child(leaves)
 
 
+func _add_decor(kind: String, x: float) -> void:
+	var node := Node2D.new()
+	node.position = Vector2(x, GROUND_Y)
+	node.z_index = -9
+	match kind:
+		"rock":
+			var rock := Polygon2D.new()
+			rock.polygon = PackedVector2Array([
+				Vector2(-18, 0), Vector2(-12, -14), Vector2(2, -18), Vector2(16, -8), Vector2(14, 0)])
+			rock.color = Color(0.52, 0.52, 0.55)
+			node.add_child(rock)
+		"grass":
+			for i in 4:
+				var blade := Line2D.new()
+				var dx := -9.0 + i * 6.0
+				blade.points = PackedVector2Array([Vector2(dx, 0), Vector2(dx + 3.0 * (1 if i % 2 == 0 else -1), -14.0 - 3.0 * (i % 3))])
+				blade.width = 2.0
+				blade.default_color = Color(0.35, 0.55, 0.26)
+				node.add_child(blade)
+		"drift":
+			var log := Polygon2D.new()
+			log.polygon = PackedVector2Array([
+				Vector2(-26, -3), Vector2(24, -6), Vector2(28, 0), Vector2(-22, 3)])
+			log.color = Color(0.45, 0.33, 0.2)
+			node.add_child(log)
+		"star":
+			var star := Polygon2D.new()
+			star.polygon = PackedVector2Array([
+				Vector2(-8, 2), Vector2(-3, -3), Vector2(0, -9), Vector2(3, -3),
+				Vector2(8, 2), Vector2(2, 4), Vector2(0, 3), Vector2(-2, 4)])
+			star.color = Color(0.9, 0.5, 0.4)
+			node.add_child(star)
+	add_child(node)
+
+
 func _build_ground() -> void:
 	var body := StaticBody2D.new()
 	body.collision_layer = 1
 	body.collision_mask = 0
 	var cs := CollisionShape2D.new()
 	var shape := RectangleShape2D.new()
-	shape.size = Vector2(1280, 720 - GROUND_Y)
+	shape.size = Vector2(ISLAND_WIDTH, 720 - GROUND_Y)
 	cs.shape = shape
-	cs.position = Vector2(640, GROUND_Y + (720 - GROUND_Y) * 0.5)
+	cs.position = Vector2(ISLAND_WIDTH * 0.5, GROUND_Y + (720 - GROUND_Y) * 0.5)
 	body.add_child(cs)
 
 	var sand := Polygon2D.new()
-	sand.polygon = PackedVector2Array([Vector2(0, GROUND_Y), Vector2(1280, GROUND_Y), Vector2(1280, 720), Vector2(0, 720)])
+	sand.polygon = PackedVector2Array([
+		Vector2(0, GROUND_Y), Vector2(ISLAND_WIDTH, GROUND_Y), Vector2(ISLAND_WIDTH, 720), Vector2(0, 720)])
 	sand.color = Color(0.76, 0.66, 0.45)
 	body.add_child(sand)
 
 	var grass := Line2D.new()
-	grass.points = PackedVector2Array([Vector2(0, GROUND_Y), Vector2(1280, GROUND_Y)])
+	grass.points = PackedVector2Array([Vector2(0, GROUND_Y), Vector2(ISLAND_WIDTH, GROUND_Y)])
 	grass.width = 6.0
 	grass.default_color = Color(0.4, 0.6, 0.3)
 	body.add_child(grass)
 
 	# 屏幕两侧隐形边界墙：防止走出世界坠落消失
-	for wx in [-20.0, 1300.0]:
+	for wx in [-20.0, ISLAND_WIDTH + 20.0]:
 		var wcs := CollisionShape2D.new()
 		var wshape := RectangleShape2D.new()
 		wshape.size = Vector2(40, 1600)
@@ -236,7 +308,7 @@ func _build_ground() -> void:
 func _build_props() -> void:
 	# 神秘商人：紫袍兜帽身影
 	var merchant := Node2D.new()
-	merchant.position = Vector2(560, 524)
+	merchant.position = Vector2(950, 524)
 	merchant.z_index = 4
 	var robe := Polygon2D.new()
 	robe.polygon = PackedVector2Array([
@@ -257,7 +329,7 @@ func _build_props() -> void:
 
 	# 装备工作台：木桌与工具
 	var bench := Node2D.new()
-	bench.position = Vector2(820, 540)
+	bench.position = Vector2(1600, 540)
 	bench.z_index = 4
 	var table := Polygon2D.new()
 	table.polygon = PackedVector2Array([Vector2(-30, -14), Vector2(30, -14), Vector2(26, 20), Vector2(-26, 20)])
@@ -269,14 +341,14 @@ func _build_props() -> void:
 	bench.add_child(tool)
 	add_child(bench)
 
-	# 船坞：未完成的小帆船（随进度显形）
+	# 船坞：未完成的小帆船（随进度显形），滑道朝右海湾
 	_boat_visual = Node2D.new()
-	_boat_visual.position = Vector2(1060, 552)
+	_boat_visual.position = Vector2(2280, 552)
 	_boat_visual.z_index = 4
 	add_child(_boat_visual)
 	_refresh_boat_visual()
 	var slipway := Polygon2D.new()
-	slipway.polygon = PackedVector2Array([Vector2(990, 560), Vector2(1130, 560), Vector2(1120, 568), Vector2(1000, 568)])
+	slipway.polygon = PackedVector2Array([Vector2(2210, 560), Vector2(2350, 560), Vector2(2340, 568), Vector2(2220, 568)])
 	slipway.color = Color(0.5, 0.42, 0.3)
 	slipway.z_index = 3
 	add_child(slipway)

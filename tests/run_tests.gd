@@ -364,7 +364,7 @@ func _test_map_data() -> int:
 
 func _test_loot_randomness() -> int:
 	print("[掉落随机性]")
-	var scene = load("res://scenes/underwater.tscn").new()
+	var scene = load("res://scenes/underwater.tscn").instantiate()
 	root.add_child(scene)
 	var qualities := {}
 	var type_seen := {}

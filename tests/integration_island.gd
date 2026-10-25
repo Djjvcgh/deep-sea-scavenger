@@ -39,7 +39,7 @@ func _run() -> void:
 	var player = island.player
 
 	# 商人面板
-	player.global_position = Vector2(560, 500)
+	player.global_position = Vector2(950, 500)
 	await create_timer(0.3).timeout
 	await _tap("interact")
 	await create_timer(0.2).timeout
@@ -56,7 +56,7 @@ func _run() -> void:
 	_check(not paused, "关闭面板不暂停")
 
 	# 按钮路径关闭（界面上的「离开」按钮走同一 close()）：必须解除移动锁定
-	player.global_position = Vector2(560, 500)
+	player.global_position = Vector2(950, 500)
 	await create_timer(0.3).timeout
 	await _tap("interact")
 	await create_timer(0.2).timeout
@@ -79,14 +79,34 @@ func _run() -> void:
 	_check(player.global_position.x >= 0.0 and player.global_position.y < 560.0,
 		"左边界：玩家留在画面内不坠落（x=%.0f, y=%.0f）"
 			% [player.global_position.x, player.global_position.y])
-	player.global_position = Vector2(1220, 500)
+	player.global_position = Vector2(2540, 500)
 	await create_timer(0.3).timeout
 	Input.action_press("move_right")
 	await create_timer(2.0).timeout
 	Input.action_release("move_right")
-	_check(player.global_position.x <= 1280.0 and player.global_position.y < 560.0,
+	_check(player.global_position.x <= 2600.0 and player.global_position.y < 560.0,
 		"右边界：玩家留在画面内不坠落（x=%.0f, y=%.0f）"
 			% [player.global_position.x, player.global_position.y])
+
+	# 岛屿扩展：摄像机跟随与所有交互点可达
+	player.global_position = Vector2(1600, 500)
+	await create_timer(0.3).timeout
+	await _tap("interact")
+	await create_timer(0.2).timeout
+	_check(island.upgrades_panel.visible, "按 E 打开工作台界面")
+	var cam: Camera2D = player.get_node("Camera2D")
+	_check(cam.limit_right == 2600, "摄像机右边界扩展到岛屿宽度")
+	_check(island.merchant_panel.visible == false and island.boat_panel.visible == false,
+		"工作台面板独立打开")
+	island.upgrades_panel.close()
+	await create_timer(0.2).timeout
+	player.global_position = Vector2(2280, 500)
+	await create_timer(0.3).timeout
+	await _tap("interact")
+	await create_timer(0.2).timeout
+	_check(island.boat_panel.visible, "按 E 打开船坞界面")
+	island.boat_panel.close()
+	await create_timer(0.2).timeout
 
 	# 出售与存档
 	var credits_before: int = gs.credits
