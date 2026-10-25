@@ -9,6 +9,7 @@ const PlayerScript := preload("res://scripts/player.gd")
 const WreckGenRes := preload("res://scripts/wreck_gen.gd")
 const CaveGenRes := preload("res://scripts/cave_gen.gd")
 const DiveGeneratorRes := preload("res://scripts/dive_generator.gd")
+const WorldLayoutRes := preload("res://scripts/world_layout.gd")
 
 const ChestScene := preload("res://scenes/treasure_chest.tscn")
 const SharkScene := preload("res://scenes/shark.tscn")
@@ -74,6 +75,7 @@ var time_left := 0.0
 var boss: Node2D = null
 
 var _rng := RandomNumberGenerator.new()
+var _layout := {}              # 本次下潜的世界布局（区域排布 + 骨架 + 通道）
 var _chosen := {}              # zone -> {"index": int, "variant": Dictionary}
 var _wrecks: Array = []        # 本次下潜生成的沉船遗址（WreckGen.generate 结果）
 var _wreck_solids := {}        # zone -> 沉船实体矩形（并入地形系统）
@@ -143,8 +145,9 @@ func _ready() -> void:
 	pause_menu.setup(true)
 
 	if not GameState.lost_cache.is_empty():
-		var zone := MapDataRes.zone_at(float(GameState.lost_cache["x"]))
-		hud.spawn_notice("声呐检测到上次的遗落物（%s）" % MapDataRes.zone_name(zone), UICommon.CYAN)
+		var cache_pos := Vector2(float(GameState.lost_cache["x"]), float(GameState.lost_cache["y"]))
+		var zone := get_zone_at(cache_pos)
+		hud.spawn_notice("声呐检测到上次的遗落物（%s）" % WorldLayoutRes.zone_name(_layout, zone), UICommon.CYAN)
 
 	hud.spawn_notice("本次海域主题：%s（%s出没）" \
 		% [MapDataRes.THEME_NAMES[dive_theme], MapDataRes.THEME_BOSS[dive_theme]], UICommon.CYAN)
@@ -165,6 +168,11 @@ func _roll_layout() -> void:
 	if env_seed != "":
 		dive_seed = int(env_seed)
 	_rng.seed = dive_seed
+	# 世界布局：横列 / 纵深层（区域排布与骨架形状按种子生成）
+	var layout_kind := OS.get_environment("DEEPSEA_LAYOUT")
+	if layout_kind == "":
+		layout_kind = WorldLayoutRes.roll_kind(_rng)
+	_layout = WorldLayoutRes.build(layout_kind, _rng)
 	# 海域主题：决定本次出没的 Boss，并对生成做轻微偏置
 	dive_theme = String(_weighted_roll(MapDataRes.DIVE_THEME_WEIGHTS))
 	_chosen = {}
@@ -173,7 +181,7 @@ func _roll_layout() -> void:
 	_sand_tint = Color(_rng.randf_range(0.9, 1.06), _rng.randf_range(0.93, 1.02), _rng.randf_range(0.82, 1.0))
 	_rock_tint = Color(_rng.randf_range(0.84, 1.06), _rng.randf_range(0.87, 1.02), _rng.randf_range(0.9, 1.06))
 	# 世界生成管线：变体选择（含主题重抽）→ 沉船 → 洞穴 → 地形模块（同种子同地图）
-	var world := DiveGeneratorRes.generate_world(_rng, dive_theme)
+	var world := DiveGeneratorRes.generate_world(_rng, dive_theme, _layout)
 	_chosen = world["chosen"]
 	_wrecks = world["wrecks"]
 	_wreck_solids = {"A": [], "B": [], "C": []}
@@ -193,13 +201,17 @@ func _roll_layout() -> void:
 			_feature_solids[f["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, f["kind"]])
 
 
+func get_zone_at(p: Vector2) -> String:
+	return WorldLayoutRes.zone_at(_layout, p)
+
+
 func get_zone_label() -> String:
 	if player == null or not is_instance_valid(player):
 		return ""
-	var zone := MapDataRes.zone_at(player.global_position.x)
+	var zone := get_zone_at(player.global_position)
 	if not _chosen.has(zone):
-		return MapDataRes.zone_name(zone)
-	return "%s · %s" % [MapDataRes.zone_name(zone), _chosen[zone]["variant"]["name"]]
+		return WorldLayoutRes.zone_name(_layout, zone)
+	return "%s · %s" % [WorldLayoutRes.zone_name(_layout, zone), _chosen[zone]["variant"]["name"]]
 
 
 func _input(event: InputEvent) -> void:
@@ -309,6 +321,10 @@ func _spawn_boss(script: GDScript, pos: Vector2, notice: String) -> void:
 	boss.setup(player)          # 先注入玩家引用（_ready 中会用到）
 	if pos != Vector2.INF:
 		boss.position = pos     # 固定出生点（船长室/洞穴巢穴中心，非墙体）
+	if "spawn_region" in boss:
+		boss.spawn_region = _layout["boss_region"]
+	if "zone_check" in boss:
+		boss.zone_check = func(p: Vector2) -> bool: return get_zone_at(p) == "C"
 	add_child(boss)
 	boss.defeated.connect(_on_boss_defeated)
 	boss.submerged.connect(_on_boss_submerged)
@@ -534,15 +550,14 @@ func _roll_cave_loot(pool_key: String) -> Array:
 ## 小型容器（海贝/垃圾袋）：按种子沿海床散布，避开实体与宝箱点。
 func _spawn_containers() -> void:
 	var solids := _all_solids()
-	var floor_y := {"A": 800.0, "B": 950.0, "C": 950.0}
-	var x_range := {"A": [110.0, 1640.0], "B": [1760.0, 3340.0], "C": [3530.0, 5070.0]}
-	for zone in ["A", "B", "C"]:
+	for cfg in _layout["container_spawns"]:
+		var zone: String = cfg["zone"]
 		var placed := 0
 		var tries := 0
-		while placed < int(BalanceRes.CONTAINER_COUNTS[zone]) and tries < 80:
+		while placed < int(cfg["count"]) and tries < 80:
 			tries += 1
-			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
-			var y: float = floor_y[zone] - 16.0
+			var x := _rng.randf_range(cfg["x_range"][0], cfg["x_range"][1])
+			var y: float = float(cfg["floor_y"]) - 16.0
 			# 避障检查点抬高到离地 30px：贴地 16px 会被海床自身的间隙检查否决
 			if not MapDataRes.circle_clear(Vector2(x, y - 14.0), 26.0, solids):
 				continue
@@ -699,7 +714,7 @@ func _build_environment() -> void:
 	bg.modulate = _water_tint
 	add_child(bg)
 
-	# 越往右越暗（区域加深）
+	# 越深越暗（横列布局沿 x 加深；纵深层布局沿 y 加深）
 	var dark_grad := Gradient.new()
 	dark_grad.offsets = PackedFloat32Array([0.0, 1.0])
 	dark_grad.colors = PackedColorArray([Color(0, 0, 0, 0), Color(0, 0, 0, 0.45)])
@@ -708,7 +723,10 @@ func _build_environment() -> void:
 	dark_tex.width = 64
 	dark_tex.height = 64
 	dark_tex.fill_from = Vector2(0, 0)
-	dark_tex.fill_to = Vector2(1, 0)
+	if _layout["darkness_axis"] == "y":
+		dark_tex.fill_to = Vector2(0, 1)
+	else:
+		dark_tex.fill_to = Vector2(1, 0)
 	var dark := TextureRect.new()
 	dark.texture = dark_tex
 	dark.position = Vector2(0, 0)
@@ -742,22 +760,23 @@ func _build_environment() -> void:
 		add_child(bubble)
 		_bubbles.append(bubble)
 
-	# 深层洞穴远处的巨大阴影（克苏鲁氛围暗示）
-	_shadow = Polygon2D.new()
-	_shadow.polygon = _ellipse(260.0, 150.0, 20)
-	_shadow.position = Vector2(4650, 160)
-	_shadow.color = Color(0, 0, 0, 0.1)
-	_shadow.z_index = -14
-	add_child(_shadow)
+	if _layout["silhouette"]:
+		# 深层洞穴远处的巨大阴影（克苏鲁氛围暗示）
+		_shadow = Polygon2D.new()
+		_shadow.polygon = _ellipse(260.0, 150.0, 20)
+		_shadow.position = Vector2(4650, 160)
+		_shadow.color = Color(0, 0, 0, 0.1)
+		_shadow.z_index = -14
+		add_child(_shadow)
 
-	# 沉船背景剪影
-	var silhouette := Polygon2D.new()
-	silhouette.polygon = PackedVector2Array([
-		Vector2(2050, 700), Vector2(2520, 640), Vector2(2950, 690),
-		Vector2(2950, 950), Vector2(2050, 950)])
-	silhouette.color = Color(0.05, 0.07, 0.1, 0.55)
-	silhouette.z_index = -10
-	add_child(silhouette)
+		# 沉船背景剪影
+		var silhouette := Polygon2D.new()
+		silhouette.polygon = PackedVector2Array([
+			Vector2(2050, 700), Vector2(2520, 640), Vector2(2950, 690),
+			Vector2(2950, 950), Vector2(2050, 950)])
+		silhouette.color = Color(0.05, 0.07, 0.1, 0.55)
+		silhouette.z_index = -10
+		add_child(silhouette)
 
 	# 深度黑暗调制：区域C明显变暗，配合玩家潜水灯（能见度即风险）
 	_canvas_mod = CanvasModulate.new()
@@ -768,17 +787,14 @@ func _build_environment() -> void:
 ## 按种子在海底散布植被与背景层（避开实体地形）。
 func _build_decor() -> void:
 	var solids := _all_solids()
-	var floor_y := {"A": 800.0, "B": 950.0, "C": 950.0}
-	var x_range := {"A": [80.0, 1650.0], "B": [1750.0, 3350.0], "C": [3520.0, 5080.0]}
-	var counts := {"A": 9, "B": 7, "C": 5}
-
-	for zone in ["A", "B", "C"]:
+	for cfg in _layout["decor_spawns"]:
+		var zone: String = cfg["zone"]
 		var placed := 0
 		var tries := 0
-		while placed < counts[zone] and tries < 60:
+		while placed < int(cfg["count"]) and tries < 60:
 			tries += 1
-			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
-			var y: float = floor_y[zone]
+			var x := _rng.randf_range(cfg["x_range"][0], cfg["x_range"][1])
+			var y: float = float(cfg["floor_y"])
 			if not MapDataRes.circle_clear(Vector2(x, y - 26.0), 24.0, solids):
 				continue
 			placed += 1
@@ -802,8 +818,8 @@ func _build_decor() -> void:
 
 		# 背景层植物与岩石（更暗、更大、无碰撞）
 		for i in 4:
-			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
-			var y: float = floor_y[zone]
+			var x := _rng.randf_range(cfg["x_range"][0], cfg["x_range"][1])
+			var y: float = float(cfg["floor_y"])
 			var spr := Sprite2D.new()
 			spr.texture = _tex(BG_FLORA[_rng.randi_range(0, BG_FLORA.size() - 1)])
 			spr.scale = Vector2.ONE * _rng.randf_range(1.4, 2.2)
@@ -812,8 +828,8 @@ func _build_decor() -> void:
 			spr.z_index = -12
 			add_child(spr)
 		for i in 2:
-			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
-			var y: float = floor_y[zone]
+			var x := _rng.randf_range(cfg["x_range"][0], cfg["x_range"][1])
+			var y: float = float(cfg["floor_y"])
 			var spr := Sprite2D.new()
 			spr.texture = _tex("background_rock_%s" % ["a", "b"][_rng.randi_range(0, 1)])
 			spr.scale = Vector2.ONE * _rng.randf_range(1.2, 2.0)
@@ -826,13 +842,12 @@ func _build_decor() -> void:
 ## 环境鱼群：纯氛围，无碰撞，按种子生成。
 func _build_fish_schools() -> void:
 	var solids := _all_solids()
-	var ranges := [[300.0, 1600.0], [1800.0, 3300.0], [1800.0, 3300.0],
-		[3550.0, 5000.0], [3550.0, 5000.0]]
+	var ranges: Array = _layout["school_ranges"]
 	for r in ranges:
 		var center := Vector2.ZERO
 		var ok := false
 		for attempt in 8:
-			center = Vector2(_rng.randf_range(r[0], r[1]), _rng.randf_range(220.0, 760.0))
+			center = Vector2(_rng.randf_range(r[0], r[1]), _rng.randf_range(r[2], r[3]))
 			if MapDataRes.circle_clear(center, 90.0, solids):
 				ok = true
 				break
@@ -1042,8 +1057,9 @@ static func _ellipse(rx: float, ry: float, n := 14) -> PackedVector2Array:
 
 func _process(delta: float) -> void:
 	_shadow_t += delta
-	_shadow.position.x = 4650.0 + sin(_shadow_t * 0.12) * 90.0
-	_shadow.position.y = 160.0 + sin(_shadow_t * 0.21) * 24.0
+	if _shadow != null:
+		_shadow.position.x = 4650.0 + sin(_shadow_t * 0.12) * 90.0
+		_shadow.position.y = 160.0 + sin(_shadow_t * 0.21) * 24.0
 	for weed in _seaweeds:
 		weed["pivot"].rotation = sin(_shadow_t * 1.4 + weed["phase"]) * weed["amp"]
 	for b in _bubbles:
@@ -1067,7 +1083,7 @@ func _process(delta: float) -> void:
 	# 深度黑暗：按区域平滑过渡
 	if player != null and is_instance_valid(player):
 		var target := Color.WHITE
-		match MapDataRes.zone_at(player.global_position.x):
+		match get_zone_at(player.global_position):
 			"B":
 				target = Color(0.78, 0.84, 0.93)
 			"C":

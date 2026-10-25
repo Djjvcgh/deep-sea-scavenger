@@ -1,9 +1,16 @@
 extends SceneTree
+
+## 布局固定为横带（本测试的路径/坐标按横带设计）
+
+
+func _init() -> void:
+	OS.set_environment("DEEPSEA_LAYOUT", "horizontal")
 ## 主菜单流程集成测试：新游戏建立初始存档、继续游戏恢复进度。
 ## godot --headless -s res://tests/integration_menu.gd
 ## 输出走 stderr（printerr）避免管道缓冲掩盖卡点。
 
 var failures := 0
+
 
 
 func _initialize() -> void:

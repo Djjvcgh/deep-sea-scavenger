@@ -314,23 +314,75 @@ const TERRAIN_TEMPLATES := {
 	"arch": {"name": "石拱", "kind": "cave",
 		"rects": [[-120, -150, 34, 150], [86, -150, 34, 150], [-120, -176, 240, 26]]},
 	"dune_low": {"name": "沙脊", "kind": "sand", "rects": [[-90, -30, 180, 30]]},
+	"terrace": {"name": "沙阶", "kind": "sand",
+		"rects": [[-260, -100, 520, 100], [-150, -160, 300, 60]]},
+	"outcrop_west": {"name": "西墙岩垛", "kind": "cave", "rects": [[0, 690, 130, 210]]},
+	"outcrop_east": {"name": "东墙岩垛", "kind": "cave",
+		"rects": [[-130, 280, 130, 200], [-90, 520, 90, 140]]},
 	"hang_cluster": {"name": "倒悬岩簇", "kind": "cave",
 		"rects": [[-60, 0, 40, 130], [10, 0, 34, 85], [-18, 105, 40, 45]]},
 }
 
 ## 每潜布置计划：区域 / 形态 / 模板池 / 数量区间 / x区间 / 锚面y
 const TERRAIN_FEATURE_PLAN := [
-	{"zone": "A", "mode": "floor", "floor_y": 800.0, "kinds": ["dune_high", "rock_spire", "arch"],
+	{"zone": "A", "mode": "floor", "anchor_y": 800.0, "kinds": ["dune_high", "rock_spire", "arch"],
 		"count": [2, 3], "x_range": [360.0, 1560.0]},
-	{"zone": "B", "mode": "floor", "floor_y": 950.0, "kinds": ["dune_high", "rock_spire", "arch"],
+	{"zone": "B", "mode": "floor", "anchor_y": 950.0, "kinds": ["dune_high", "rock_spire", "arch"],
 		"count": [2, 3], "x_range": [1830.0, 2790.0]},
-	{"zone": "B", "mode": "floor", "floor_y": 950.0, "kinds": ["dune_low"],
+	{"zone": "B", "mode": "floor", "anchor_y": 950.0, "kinds": ["dune_low"],
 		"count": [1, 2], "x_range": [2870.0, 5000.0]},
-	{"zone": "C", "mode": "floor", "floor_y": 950.0, "kinds": ["dune_low"],
+	{"zone": "C", "mode": "floor", "anchor_y": 950.0, "kinds": ["dune_low"],
 		"count": [1, 2], "x_range": [3520.0, 5060.0]},
-	{"zone": "C", "mode": "hang", "floor_y": 520.0, "kinds": ["hang_cluster"],
+	{"zone": "C", "mode": "hang", "anchor_y": 520.0, "kinds": ["hang_cluster"],
 		"count": [1, 2], "x_range": [3620.0, 4980.0]},
 ]
+
+## 纵深层布局（上下划分）使用的带状变体：A=上层阳光带 / B=中层搁架 / C=深渊湖底。
+## 搁架顶面固定 y=560（沉船锚点依赖），骨架段隙按种子生成。
+const VERTICAL_VARIANTS := {
+	"A": [
+		{"name": "上层残骸",
+			"solids": [[700, 180, 180, 40, "wreck"], [1900, 150, 160, 40, "wreck"],
+				[3100, 200, 200, 40, "wreck"], [1500, 260, 24, 300, "wreck"]],
+			"chests": [Vector2(760, 250), Vector2(1960, 225), Vector2(3180, 275), Vector2(1560, 300)],
+			"patrols": []},
+		{"name": "上层断桅",
+			"solids": [[900, 160, 200, 40, "wreck"], [2300, 190, 170, 40, "wreck"],
+				[2700, 250, 24, 310, "wreck"], [3900, 170, 190, 40, "wreck"]],
+			"chests": [Vector2(980, 235), Vector2(2380, 265), Vector2(2760, 300), Vector2(3980, 245)],
+			"patrols": []},
+	],
+	"B": [
+		{"name": "断桅搁架",
+			"solids": [[1150, 240, 24, 320, "wreck"], [1920, 220, 24, 340, "wreck"],
+				[3360, 260, 20, 300, "wreck"]],
+			"chests": [Vector2(1230, 536), Vector2(2000, 536), Vector2(3420, 536), Vector2(700, 430)],
+			"patrols": [[600.0, 1100.0, 380.0], [2220.0, 2380.0, 390.0]],
+			"wreck_anchors": [{"x": 1600.0, "floor_y": 560.0, "kinds": ["merchant", "ritual"]},
+				{"x": 2500.0, "floor_y": 560.0, "kinds": ["merchant", "pirate", "ritual"]},
+				{"x": 3050.0, "floor_y": 560.0, "kinds": ["merchant", "pirate"]}]},
+		{"name": "搁架残柱",
+			"solids": [[1160, 250, 20, 310, "wreck"], [1930, 230, 24, 330, "wreck"],
+				[3370, 240, 22, 320, "wreck"]],
+			"chests": [Vector2(1230, 536), Vector2(2000, 536), Vector2(3420, 536), Vector2(450, 430)],
+			"patrols": [[600.0, 1100.0, 380.0], [2220.0, 2380.0, 390.0]],
+			"wreck_anchors": [{"x": 1600.0, "floor_y": 560.0, "kinds": ["merchant", "ritual"]},
+				{"x": 2500.0, "floor_y": 560.0, "kinds": ["merchant", "pirate", "ritual"]},
+				{"x": 3050.0, "floor_y": 560.0, "kinds": ["merchant", "pirate"]}]},
+	],
+	"C": [
+		{"name": "渊底石林",
+			"solids": [[1150, 720, 80, 230, "rock"], [2150, 690, 70, 260, "rock"],
+				[2550, 730, 90, 220, "rock"], [2000, 700, 50, 60, "rock"]],
+			"chests": [Vector2(1500, 880), Vector2(2700, 880), Vector2(2350, 860)],
+			"patrols": [[880.0, 1080.0, 820.0], [2250.0, 2500.0, 780.0]]},
+		{"name": "渊底残骸",
+			"solids": [[1350, 700, 200, 90, "wreck"], [2600, 690, 70, 260, "rock"],
+				[2900, 700, 50, 60, "rock"], [3300, 720, 180, 80, "wreck"]],
+			"chests": [Vector2(1700, 880), Vector2(2900, 880), Vector2(3650, 870)],
+			"patrols": [[1450.0, 1900.0, 820.0], [2950.0, 3200.0, 800.0]]},
+	],
+}
 
 
 ## ---- V0.4 海域主题：每次下潜抽取，决定出没的 Boss ----
@@ -343,6 +395,11 @@ const THEME_BOSS := {"wreck": "幽灵船长", "cave": "洞穴海蛇", "abyss": "
 static func variant_solids(zone: String, index: int) -> Array:
 	var v: Dictionary = ZONE_VARIANTS[zone][index]
 	return SHARED_SOLIDS + v["solids"]
+
+
+## 布局感知：返回指定布局下某区某变体自身的实体（不含共享骨架，骨架在布局里）。
+static func variant_solids_of(layout: Dictionary, zone: String, index: int) -> Array:
+	return layout["variants"][zone][index]["solids"]
 
 
 ## 圆形区域是否与任何实体保持距离（用于通道与校验）

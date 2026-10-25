@@ -1,8 +1,15 @@
 extends SceneTree
+
+## 布局固定为横带（本测试的路径/坐标按横带设计）
+
+
+func _init() -> void:
+	OS.set_environment("DEEPSEA_LAYOUT", "horizontal")
 ## v0.3 战斗端到端测试：鱼叉猎鲨 → 巨影苏醒 → 触拍伤害 → 击杀掉落 → 逃离潜回。
 ## godot --headless -s res://tests/integration_boss.gd
 
 var failures := 0
+
 
 
 func _initialize() -> void:
@@ -40,7 +47,7 @@ func _run() -> void:
 	if FileAccess.file_exists(save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
 	# 固定深渊主题种子：神像只在该主题下唤醒巨影
-	OS.set_environment("DEEPSEA_SEED", "2")
+	OS.set_environment("DEEPSEA_SEED", "4")
 
 	printerr("[鱼叉猎鲨]")
 	await _load_underwater()

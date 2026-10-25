@@ -1,10 +1,17 @@
 extends SceneTree
+
+## 布局固定为横带（本测试的路径/坐标按横带设计）
+
+
+func _init() -> void:
+	OS.set_environment("DEEPSEA_LAYOUT", "horizontal")
 ## 端到端集成测试：真实加载海底场景，用 Input 模拟玩家操作。
 ## godot --headless -s res://tests/integration_dive.gd
 ## 覆盖：搜宝开箱（拾取面板）→ 背包满拒绝拾取 → 鲨鱼伤害与无敌帧 → 撤离成功
 ## → 体力耗尽失败（战利品掉落缓存）→ 遗落物找回 → 15分钟限时失败。
 
 var failures := 0
+
 
 
 func _initialize() -> void:

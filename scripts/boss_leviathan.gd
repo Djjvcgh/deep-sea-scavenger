@@ -21,6 +21,9 @@ var player: CharacterBody2D = null
 var dead := false
 var hit_radius := 160.0
 var loot_items: Array = ItemDBRes.BOSS_LOOT.duplicate(true)
+## 巢穴区域（由布局注入）：出生位置限制在其中；zone_check 判定玩家是否仍在深渊区
+var spawn_region := Rect2(3620, 560, 1430, 320)
+var zone_check := Callable()
 
 var _emerge_left := 2.5
 var _slam_timer := 2.2
@@ -46,8 +49,10 @@ func _ready() -> void:
 	add_to_group("boss")
 	z_index = 3
 	# 在玩家附近的深渊位置浮现
-	var px := clampf(player.global_position.x + 300.0, 3620.0, 5050.0)
-	var py := clampf(player.global_position.y - 120.0, 560.0, 880.0)
+	var px := clampf(player.global_position.x + 300.0,
+		spawn_region.position.x, spawn_region.end.x)
+	var py := clampf(player.global_position.y - 120.0,
+		spawn_region.position.y, spawn_region.end.y)
 	position = Vector2(px, py + 380.0)   # 从深处升起
 	modulate.a = 0.0
 	_build_visual()
@@ -73,9 +78,17 @@ func _physics_process(delta: float) -> void:
 
 
 func _active(delta: float) -> void:
-	# 玩家逃出区域 C：潜回深渊
-	if player == null or not is_instance_valid(player) \
-			or player.global_position.x < MapDataRes.ZONE_B_END:
+	# 玩家离开深渊区：潜回（布局提供区域判定；无判定时按横带 x 阈值兜底）
+	if player == null or not is_instance_valid(player):
+		state = State.SINKING
+		submerged.emit()
+		return
+	var in_abyss := true
+	if zone_check.is_valid():
+		in_abyss = zone_check.call(player.global_position)
+	elif player.global_position.x < MapDataRes.ZONE_B_END:
+		in_abyss = false
+	if not in_abyss:
 		state = State.SINKING
 		submerged.emit()
 		return

@@ -319,53 +319,71 @@ func _test_save_roundtrip() -> int:
 
 
 func _test_map_data() -> int:
-	print("[地图数据：变体校验]")
-	var expected_counts := {"A": 5, "B": 5, "C": 4}
-	var variant_count := 0
-	for zone in ["A", "B", "C"]:
-		var variants: Array = MapData.ZONE_VARIANTS[zone]
-		variant_count += variants.size()
-		for vi in variants.size():
-			var v: Dictionary = variants[vi]
-			var tag: String = "%s%d(%s)" % [zone, vi, v["name"]]
-			var solids: Array = MapData.SHARED_SOLIDS + v["solids"]
+	print("[地图数据：双布局变体校验]")
+	var WorldLayoutC = load("res://scripts/world_layout.gd")
+	var expected_counts := {"A": 4, "B": 4, "C": 3}
+	var horizontal_counts := {"A": 5, "B": 5, "C": 4}
+	var variant_total := 0
+	var layouts := {"horizontal": WorldLayoutC.build("horizontal",
+			_rng_for(11)), "vertical": WorldLayoutC.build("vertical", _rng_for(12))}
+	for layout_kind in layouts:
+		var layout: Dictionary = layouts[layout_kind]
+		var counts: Dictionary = horizontal_counts if layout_kind == "horizontal" else expected_counts
+		var variant_count := 0
+		for zone in ["A", "B", "C"]:
+			var variants: Array = layout["variants"][zone]
+			variant_count += variants.size()
+			for vi in variants.size():
+				var v: Dictionary = variants[vi]
+				var tag: String = "%s %s%d(%s)" % [layout_kind, zone, vi, v["name"]]
+				var solids: Array = layout["shared_solids"]["*"] 					+ layout["shared_solids"].get(zone, []) + v["solids"]
 
-			# 宝物点数量与位置合法性
-			_check(v["chests"].size() == expected_counts[zone], "%s 宝物点 %d 个" % [tag, expected_counts[zone]])
-			var chest_fail := 0
-			for spot in v["chests"]:
-				for r in solids:
-					var rect := Rect2(r[0] - 16, r[1] - 16, r[2] + 32, r[3] + 32)
-					if rect.has_point(spot):
-						_check_quiet(false, "%s 宝物点 %s 落在实体 %s 内" % [tag, spot, r])
-						chest_fail += 1
-			_check(chest_fail == 0, "%s 所有宝物点位于开阔水域" % tag)
+				# 宝物点数量与位置合法性
+				_check(v["chests"].size() == counts[zone], "%s 宝物点 %d 个" % [tag, counts[zone]])
+				var chest_fail := 0
+				for spot in v["chests"]:
+					for r in solids:
+						var rect := Rect2(r[0] - 16, r[1] - 16, r[2] + 32, r[3] + 32)
+						if rect.has_point(spot):
+							_check_quiet(false, "%s 宝物点 %s 落在实体 %s 内" % [tag, spot, r])
+							chest_fail += 1
+				_check(chest_fail == 0, "%s 所有宝物点位于开阔水域" % tag)
 
-			# 巡逻带：区间有效且不与实体重叠（鲨鱼身体约 58x20）
-			var patrol_fail := 0
-			for p in v["patrols"]:
-				if p[1] <= p[0]:
-					_check_quiet(false, "%s 巡逻区间无效 %s" % [tag, p])
-					patrol_fail += 1
-				var band := Rect2(p[0] - 30, p[2] - 16, p[1] - p[0] + 60, 32)
-				for r in solids:
-					var rect := Rect2(r[0], r[1], r[2], r[3])
-					if band.intersects(rect):
-						_check_quiet(false, "%s 巡逻带 %s 穿过实体 %s" % [tag, p, r])
+				# 巡逻带：区间有效且不与实体重叠（鲨鱼身体约 58x20）
+				var patrol_fail := 0
+				for pt in v["patrols"]:
+					if pt[1] <= pt[0]:
+						_check_quiet(false, "%s 巡逻区间无效 %s" % [tag, pt])
 						patrol_fail += 1
-			_check(patrol_fail == 0, "%s 巡逻带不穿墙" % tag)
+					var band := Rect2(pt[0] - 30, pt[2] - 16, pt[1] - pt[0] + 60, 32)
+					for r in solids:
+						var rect := Rect2(r[0], r[1], r[2], r[3])
+						if band.intersects(rect):
+							_check_quiet(false, "%s 巡逻带 %s 穿过实体 %s" % [tag, pt, r])
+							patrol_fail += 1
+				_check(patrol_fail == 0, "%s 巡逻带不穿墙" % tag)
 
-			# 三条安全通道（L1 底层爬行道 / L2 下潜斜线 / L3 上层航道）
-			var lane_fail := 0
-			for sample in MapData.lane_samples():
-				if not MapData.circle_clear(sample[0], sample[1], solids):
-					_check_quiet(false, "%s 通道被实体阻挡：点 %s" % [tag, sample[0]])
-					lane_fail += 1
-			_check(lane_fail == 0, "%s 三条安全通道贯通" % tag)
-
-	_check(variant_count == 15, "共 15 套布局变体（3 区域 × 5）")
+				# 三条安全通道
+				var lane_fail := 0
+				for sample in layout["lanes"]:
+					if not MapData.circle_clear(sample[0], sample[1], solids):
+						_check_quiet(false, "%s 通道被实体阻挡：点 %s" % [tag, sample[0]])
+						lane_fail += 1
+				_check(lane_fail == 0, "%s 三条安全通道贯通" % tag)
+		if layout_kind == "horizontal":
+			_check(variant_count == 15, "横向布局共 15 套变体（3 区域 × 5）")
+		else:
+			_check(variant_count == 6, "纵向布局共 6 套变体（3 带 × 2）")
+		variant_total += variant_count
+	_check(variant_total == 21, "两布局共 21 套变体")
 	_check(quiet_fail == 0, "变体数据全部合法")
 	return 0
+
+
+func _rng_for(seed_i: int) -> RandomNumberGenerator:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_i
+	return rng
 
 
 func _test_icons() -> int:
@@ -462,30 +480,28 @@ func _test_wrecks() -> int:
 	_check(anchor_fail == 0, "%d 个变体锚点全部合法" % anchor_zone_count)
 	_check(anchor_zone_count == 7, "共 7 个沉船锚点（B0×2/B1×2/B4×2/C2×1）")
 
-	# 200 种子：确定性 + 类型分布
+	# 200 种子 × 双布局：确定性 + 类型分布
 	var total := 0
 	var kind_seen := {}
 	var nondet := 0
+	var WorldLayoutC = load("res://scripts/world_layout.gd")
+	var DiveGenC = load("res://scripts/dive_generator.gd")
 	for seed_i in 200:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed_i
-		var chosen := {}
-		for zone in ["A", "B", "C"]:
-			chosen[zone] = {"index": rng.randi_range(0, MapData.ZONE_VARIANTS[zone].size() - 1)}
-		for zone in ["A", "B", "C"]:
-			chosen[zone]["variant"] = MapData.ZONE_VARIANTS[zone][chosen[zone]["index"]]
-		var wrecks: Array = WreckGenC.generate(rng, chosen)
+		var layout: Dictionary = WorldLayoutC.build("horizontal" if seed_i % 2 == 0 else "vertical",
+			_rng_for(seed_i + 500))
+		var chosen: Dictionary = DiveGenC.choose_variants(rng, "abyss", layout)
+		var wrecks: Array = WreckGenC.generate(rng, chosen, layout)
 		total += wrecks.size()
 		for w in wrecks:
 			kind_seen[w["kind"]] = true
 		var rng2 := RandomNumberGenerator.new()
 		rng2.seed = seed_i
-		var chosen2 := {}
-		for zone in ["A", "B", "C"]:
-			chosen2[zone] = {"index": rng2.randi_range(0, MapData.ZONE_VARIANTS[zone].size() - 1)}
-		for zone in ["A", "B", "C"]:
-			chosen2[zone]["variant"] = MapData.ZONE_VARIANTS[zone][chosen2[zone]["index"]]
-		var wrecks2: Array = WreckGenC.generate(rng2, chosen2)
+		var layout2: Dictionary = WorldLayoutC.build("horizontal" if seed_i % 2 == 0 else "vertical",
+			_rng_for(seed_i + 500))
+		var chosen2: Dictionary = DiveGenC.choose_variants(rng2, "abyss", layout2)
+		var wrecks2: Array = WreckGenC.generate(rng2, chosen2, layout2)
 		if wrecks2.size() != wrecks.size():
 			nondet += 1
 		else:
@@ -494,7 +510,7 @@ func _test_wrecks() -> int:
 					nondet += 1
 	_check(nondet == 0, "同种子生成结果可复现")
 	_check(kind_seen.size() == 3, "三种沉船类型都出现过（实际 %d 种）" % kind_seen.size())
-	_check(total > 80, "200 局共生成 %d 艘沉船（激活率合理）" % total)
+	_check(total > 100, "双布局 200 局共生成 %d 艘沉船（激活率合理）" % total)
 	return 0
 
 
@@ -527,20 +543,21 @@ func _test_caves() -> int:
 					above += 1
 			_check(above == 0, "%s 洞体全部位于挂面之下" % kind)
 
-	# 200 种子：生成 2~4 处并逐洞校验合法性（含与沉船的互避）
+	# 200 种子 × 双布局：生成 2~4 处并逐洞校验合法性（含与沉船的互避）
 	var total := 0
 	var kinds_seen := {}
 	var invalid := 0
 	var sparse := 0
+	var WorldLayoutC3 = load("res://scripts/world_layout.gd")
+	var DiveGenC3 = load("res://scripts/dive_generator.gd")
 	for seed_i in 200:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed_i
-		var chosen := {}
-		for zone in ["A", "B", "C"]:
-			var idx := rng.randi_range(0, MapData.ZONE_VARIANTS[zone].size() - 1)
-			chosen[zone] = {"index": idx, "variant": MapData.ZONE_VARIANTS[zone][idx]}
-		var wrecks: Array = WreckGenC.generate(rng, chosen)
-		var caves: Array = CaveGenC.generate(rng, chosen, _wreck_rect_list(wrecks))
+		var layout: Dictionary = WorldLayoutC3.build("horizontal" if seed_i % 2 == 0 else "vertical",
+			_rng_for(seed_i + 900))
+		var chosen: Dictionary = DiveGenC3.choose_variants(rng, "abyss", layout)
+		var wrecks: Array = WreckGenC.generate(rng, chosen, layout)
+		var caves: Array = CaveGenC.generate(rng, chosen, _wreck_rect_list(wrecks), layout)
 		total += caves.size()
 		if caves.size() < 2:
 			sparse += 1
@@ -556,9 +573,9 @@ func _test_caves() -> int:
 			var tpl: Dictionary = MapData.CAVE_TEMPLATES[cave["kind"]]
 			var zone: String = cave["zone"]
 			var v: Dictionary = chosen[zone]["variant"]
+			var solids3: Array = layout["shared_solids"]["*"] 				+ layout["shared_solids"].get(zone, []) 				+ MapData.variant_solids_of(layout, zone, chosen[zone]["index"])
 			if not CaveGenC._placement_ok(cave["rects"], cave["anchor"], tpl,
-					MapData.variant_solids(zone, chosen[zone]["index"]),
-					v["chests"], v["patrols"], others):
+					solids3, v["chests"], v["patrols"], others, layout):
 				_check_quiet(false, "洞穴非法：种子%d %s@%s" % [seed_i, cave["kind"], cave["anchor"]])
 				invalid += 1
 	_check(invalid == 0, "200 种子洞穴全部合法且每局 ≥1 处（异常 %d）" % invalid)
@@ -579,6 +596,7 @@ func _test_world_generation() -> int:
 	print("[整局生成校验：主题+沉船+洞穴+地形模块+Boss巢穴]")
 	var DiveGenC = load("res://scripts/dive_generator.gd")
 	var TerrainGenC = load("res://scripts/terrain_gen.gd")
+	var WorldLayoutC = load("res://scripts/world_layout.gd")
 	var extract: Rect2 = MapData.EXTRACT_RECT.grow(40.0)
 	var themes := {}
 	var bad := 0
@@ -588,10 +606,13 @@ func _test_world_generation() -> int:
 	var wreck_theme_count := 0
 	var cave_theme_count := 0
 	var feature_count := 0
+	var layouts4 := {"horizontal": WorldLayoutC.build("horizontal", _rng_for(31)),
+		"vertical": WorldLayoutC.build("vertical", _rng_for(32))}
 	for seed_i in 100:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed_i
-		# 与场景 _roll_layout 一致的抽取顺序：主题 → 9次色调 → 生成管线
+		# 与场景 _roll_layout 一致的抽取顺序：布局 → 主题 → 9次色调 → 生成管线
+		var layout: Dictionary = layouts4["vertical" if rng.randf() < 0.45 else "horizontal"]
 		var r := rng.randf()
 		var theme := "abyss"
 		if r <= float(MapData.DIVE_THEME_WEIGHTS["wreck"]):
@@ -601,7 +622,7 @@ func _test_world_generation() -> int:
 		themes[theme] = true
 		for i in 9:
 			rng.randf()
-		var world: Dictionary = DiveGenC.generate_world(rng, theme)
+		var world: Dictionary = DiveGenC.generate_world(rng, theme, layout)
 		var chosen: Dictionary = world["chosen"]
 		var wrecks: Array = world["wrecks"]
 		var caves: Array = world["caves"]
@@ -630,7 +651,7 @@ func _test_world_generation() -> int:
 			for fj in features.size():
 				if fj != fi:
 					others.append_array(features[fj]["rects"])
-			if not TerrainGenC.placement_ok(f, chosen, wreck_rects, cave_rects, others):
+			if not TerrainGenC.placement_ok(f, chosen, wreck_rects, cave_rects, others, layout):
 				_check_quiet(false, "种子%d 地形模块非法 %s@%s" % [seed_i, f["kind"], f["anchor"]])
 				bad += 1
 			if extract.intersects(_footprint_rect(f["rects"])):
@@ -639,23 +660,22 @@ func _test_world_generation() -> int:
 		# Boss 触发区/巢穴中心必须是开阔水域（Boss 不出生在墙体里）
 		for w in wrecks:
 			var center: Vector2 = (w["interior"] as Rect2).get_center()
-			if not MapData.circle_clear(center, 12.0,
-					MapData.variant_solids(w["zone"], chosen[w["zone"]]["index"])):
+			if not MapData.circle_clear(center, 12.0, _layout_solids(layout, chosen, w["zone"])):
 				_check_quiet(false, "种子%d 沉船舱内中心撞到地形 %s" % [seed_i, center])
 				bad += 1
 		for c in caves:
 			var ccenter: Vector2 = (c["interior"] as Rect2).get_center()
-			if not MapData.circle_clear(ccenter, 12.0,
-					MapData.variant_solids(c["zone"], chosen[c["zone"]]["index"])):
+			if not MapData.circle_clear(ccenter, 12.0, _layout_solids(layout, chosen, c["zone"])):
 				_check_quiet(false, "种子%d 洞穴腔体中心撞到地形 %s" % [seed_i, ccenter])
 				bad += 1
-		# 同种子整局可复现
+		# 同种子整局可复现（布局抽取 + 主题 + 色调与场景消耗一致）
 		var rng2 := RandomNumberGenerator.new()
 		rng2.seed = seed_i
 		rng2.randf()
+		rng2.randf()
 		for i in 9:
 			rng2.randf()
-		var world2: Dictionary = DiveGenC.generate_world(rng2, theme)
+		var world2: Dictionary = DiveGenC.generate_world(rng2, theme, layout)
 		if world2["wrecks"].size() != wrecks.size() or world2["caves"].size() != caves.size() 				or world2["features"].size() != features.size():
 			nondet += 1
 		else:
@@ -674,6 +694,10 @@ func _test_world_generation() -> int:
 		"洞穴主题必有危险洞穴（%d/%d 局）" % [cave_theme_ok, cave_theme_count])
 	_check(feature_count >= 400, "100 局共 %d 个地形模块（平均 ≥4）" % feature_count)
 	return 0
+
+
+func _layout_solids(layout: Dictionary, chosen: Dictionary, zone: String) -> Array:
+	return layout["shared_solids"]["*"] + layout["shared_solids"].get(zone, []) 		+ MapData.variant_solids_of(layout, zone, chosen[zone]["index"])
 
 
 func _footprint_rect(rects: Array) -> Rect2:

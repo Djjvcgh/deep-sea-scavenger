@@ -1,8 +1,15 @@
 extends SceneTree
+
+## 布局固定为横带（本测试的路径/坐标按横带设计）
+
+
+func _init() -> void:
+	OS.set_environment("DEEPSEA_LAYOUT", "horizontal")
 ## 荒岛集成测试：商人界面开关、出售、下潜入口、造船完成流程。
 ## godot --headless -s res://tests/integration_island.gd
 
 var failures := 0
+
 
 
 func _initialize() -> void:

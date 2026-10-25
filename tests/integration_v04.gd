@@ -1,10 +1,17 @@
 extends SceneTree
+
+## 布局固定为横带（本测试的路径/坐标按横带设计）
+
+
+func _init() -> void:
+	OS.set_environment("DEEPSEA_LAYOUT", "horizontal")
 ## V0.4 场景级集成测试：随机沉船 / 随机洞穴 / 鲨鱼视线遮挡。
 ## godot --headless -s res://tests/integration_v04.gd
 ## 用 DEEPSEA_SEED 固定海况种子，逐段校验沉船容器可搜、洞穴可进出、
 ## 岩壁遮挡鲨鱼视线（不追逐不咬人）、离开遮挡后恢复发现。
 
 var failures := 0
+
 
 
 func _initialize() -> void:
@@ -120,6 +127,29 @@ func _run() -> void:
 		await create_timer(1.5).timeout
 		_check(shark.is_threatening(), "开阔水域鲨鱼发现玩家进入警戒/追逐")
 
+	# ---------- 纵向布局冒烟：上下划分的区域与搁架洞穴 ----------
+	print("[纵向布局冒烟]")
+	OS.set_environment("DEEPSEA_LAYOUT", "vertical")
+	OS.set_environment("DEEPSEA_SEED", "5")
+	change_scene_to_file("res://scenes/underwater.tscn")
+	await process_frame
+	await process_frame
+	var uwv = current_scene
+	_check(uwv._layout["kind"] == "vertical", "纵向布局加载")
+	_check(uwv.get_zone_at(Vector2(3000, 200)) == "A"
+		and uwv.get_zone_at(Vector2(3000, 500)) == "B"
+		and uwv.get_zone_at(Vector2(3000, 800)) == "C", "纵向区域按深度划分")
+	_check(uwv._caves.size() >= 1, "纵向布局生成 %d 处洞穴" % uwv._caves.size())
+	_check(uwv._features.size() >= 1, "纵向布局生成 %d 个地形模块" % uwv._features.size())
+	var playerv = uwv.get_node("Player")
+	playerv.global_position = Vector2(800, 50)
+	playerv.velocity = Vector2.ZERO
+	playerv.stamina = 60.0
+	await create_timer(1.0).timeout
+	_check(playerv.breathing, "纵深层上层海面仍可换气")
+	OS.set_environment("DEEPSEA_LAYOUT", "horizontal")
+	player = uwv.get_node("Player")   # 场景重载后刷新玩家引用
+
 	# ---------- 海面换气 ----------
 	print("[海面换气]")
 	get_nodes_in_group("sharks")[0].global_position = Vector2(4800, 860)
@@ -145,7 +175,8 @@ func _run() -> void:
 
 	# ---------- 海域主题与 Boss ----------
 	print("[海域主题 Boss]")
-	_check(MapData.DIVE_THEME_WEIGHTS.has(uw.dive_theme), "本局主题合法（%s）" % uw.dive_theme)
+	_check(MapData.DIVE_THEME_WEIGHTS.has(current_scene.dive_theme),
+		"本局主题合法（%s）" % current_scene.dive_theme)
 	await _test_ghost_captain(uw, player)
 	await _test_sea_serpent(uw, player)
 
@@ -161,13 +192,13 @@ func _run() -> void:
 ## 沉船主题种子：进入船长室触发幽灵船长 → 击杀 → 战利品袋。
 func _test_ghost_captain(uw, player) -> void:
 	var gs = root.get_node("GameState")
-	OS.set_environment("DEEPSEA_SEED", "0")
+	OS.set_environment("DEEPSEA_SEED", "12")
 	change_scene_to_file("res://scenes/underwater.tscn")
 	await process_frame
 	await process_frame
 	var uw2 = current_scene
 	if uw2.dive_theme != "wreck" or uw2._wrecks.is_empty():
-		print("  [跳过] 种子0 未满足沉船主题+沉船（theme=%s wrecks=%d）" % [uw2.dive_theme, uw2._wrecks.size()])
+		print("  [跳过] 种子12 未满足沉船主题+沉船（theme=%s wrecks=%d）" % [uw2.dive_theme, uw2._wrecks.size()])
 		return
 	var wreck = null
 	for w in uw2._wrecks:
@@ -221,13 +252,13 @@ func _test_ghost_captain(uw, player) -> void:
 ## 洞穴主题种子：进入危险洞穴触发洞穴海蛇 → 击杀 → 战利品袋。
 func _test_sea_serpent(uw, player) -> void:
 	var gs = root.get_node("GameState")
-	OS.set_environment("DEEPSEA_SEED", "3")
+	OS.set_environment("DEEPSEA_SEED", "1")
 	change_scene_to_file("res://scenes/underwater.tscn")
 	await process_frame
 	await process_frame
 	var uw3 = current_scene
 	if uw3.dive_theme != "cave":
-		print("  [跳过] 种子3 非洞穴主题（%s）" % uw3.dive_theme)
+		print("  [跳过] 种子1 非洞穴主题（%s）" % uw3.dive_theme)
 		return
 	var danger_cave = null
 	for c in uw3._caves:

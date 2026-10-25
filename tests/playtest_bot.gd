@@ -1,4 +1,10 @@
 extends SceneTree
+
+## 布局固定为横带（本测试的路径/坐标按横带设计）
+
+
+func _init() -> void:
+	OS.set_environment("DEEPSEA_LAYOUT", "horizontal")
 ## 机器人试玩：用真实输入策略「玩」海底场景，量化验证可玩性。
 ## godot --headless -s res://tests/playtest_bot.gd
 ##
@@ -7,6 +13,7 @@ extends SceneTree
 ## 场景3：被鲨鱼贴身，验证击退+脱离机制给出足够的反应窗口。
 
 var failures := 0
+
 var gs = null
 var uw = null
 var player = null

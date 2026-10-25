@@ -9,12 +9,12 @@ const CaveGenRes := preload("res://scripts/cave_gen.gd")
 const TerrainGenRes := preload("res://scripts/terrain_gen.gd")
 
 
-## 依据主题抽取三区变体；沉船/洞穴主题在缺少触发空间时按种子重抽对应区域变体。
-static func choose_variants(rng: RandomNumberGenerator, theme: String) -> Dictionary:
+## 依据主题抽取三区变体（变体集来自布局）；沉船/洞穴主题在缺少触发空间时按种子重抽对应区域变体。
+static func choose_variants(rng: RandomNumberGenerator, theme: String, layout: Dictionary) -> Dictionary:
 	var chosen := {}
 	for zone in ["A", "B", "C"]:
-		var idx := rng.randi_range(0, MapDataRes.ZONE_VARIANTS[zone].size() - 1)
-		chosen[zone] = {"index": idx, "variant": MapDataRes.ZONE_VARIANTS[zone][idx]}
+		var idx := rng.randi_range(0, layout["variants"][zone].size() - 1)
+		chosen[zone] = {"index": idx, "variant": layout["variants"][zone][idx]}
 	if theme == "wreck":
 		for attempt in 6:
 			if not chosen["B"]["variant"].get("wreck_anchors", []).is_empty():
@@ -31,24 +31,24 @@ static func choose_variants(rng: RandomNumberGenerator, theme: String) -> Dictio
 
 
 ## 生成一整局的可探索内容（不含色调等纯视觉层）。
-static func generate_world(rng: RandomNumberGenerator, theme: String) -> Dictionary:
-	var chosen := choose_variants(rng, theme)
+static func generate_world(rng: RandomNumberGenerator, theme: String, layout: Dictionary) -> Dictionary:
+	var chosen := choose_variants(rng, theme, layout)
 
-	var wrecks: Array = WreckGenRes.generate(rng, chosen)
+	var wrecks: Array = WreckGenRes.generate(rng, chosen, layout)
 	if theme == "wreck" and wrecks.is_empty():
-		var forced: Dictionary = WreckGenRes.force_one(rng, chosen)
+		var forced: Dictionary = WreckGenRes.force_one(rng, chosen, layout)
 		if not forced.is_empty():
 			wrecks.append(forced)
 	var wreck_rects: Array = []
 	for w in wrecks:
 		wreck_rects.append_array(w["rects"])
 
-	var caves: Array = CaveGenRes.generate(rng, chosen, wreck_rects,
+	var caves: Array = CaveGenRes.generate(rng, chosen, wreck_rects, layout,
 		3 if theme == "cave" else 2, "danger" if theme == "cave" else "")
 	var cave_rects: Array = []
 	for c in caves:
 		cave_rects.append_array(c["rects"])
 
-	var features: Array = TerrainGenRes.generate(rng, chosen, wreck_rects, cave_rects)
+	var features: Array = TerrainGenRes.generate(rng, chosen, wreck_rects, cave_rects, layout)
 
 	return {"chosen": chosen, "wrecks": wrecks, "caves": caves, "features": features}
