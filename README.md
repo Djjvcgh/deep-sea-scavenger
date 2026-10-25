@@ -1,4 +1,4 @@
-# 深海摸金（Deep Sea Scavenger）v0.1
+# 深海摸金（Deep Sea Scavenger）V0.1.0
 
 2D 横版海底摸金生存游戏。有限体力 + 有限背包 + 高价值宝物 + 深海危险 + 安全撤离。
 
@@ -6,13 +6,44 @@
 
 ---
 
-## 环境与运行
+## 获取与开始游戏（玩家看这里）
+
+**方式一：直接玩（推荐，无需安装任何东西）**
+
+1. 打开本仓库的 GitHub 页面 → 右侧 **Releases** → 最新版本（V0.1.0）
+2. 下载附件 `DeepSeaScavenger-v0.1.0-win64.zip`，解压到任意文件夹
+3. 双击 `DeepSeaScavenger.exe` 开始游戏
+
+> 需要 64 位 Windows 10/11；首次运行如被 SmartScreen 拦截，点「更多信息 → 仍要运行」。
+> 存档不在游戏文件夹里，删掉游戏目录**不会**丢进度。
+
+**方式二：源码运行（想看/改代码的人）**
+
+1. 安装 [Godot 4.3 stable](https://godotengine.org/download)（普通版即可，约 100MB）
+2. 下载本仓库（绿色 Code 按钮 → Download ZIP，或 `git clone`）
+3. 打开 Godot → 「导入」→ 选择项目根目录的 `project.godot` → 等待资源导入完成
+4. 按 **F5** 运行
+
+## 更新方式
+
+- **玩家（方式一）**：到 Releases 重新下载最新版压缩包，解压覆盖即可。存档保存在系统目录
+  （`%APPDATA%\Godot\app_userdata\深海摸金\`），与游戏文件无关，覆盖不会丢进度。
+- **开发者（方式二）**：在本目录执行 `git pull` 拉取最新代码，再用 Godot 打开工程即可
+  （首次打开会自动重新导入资源）。`git pull` 只更新代码和资源，不会动你的本地存档。
+  注意：`git pull` 拿到的是源码，必须用 Godot 运行；下载 exe 的玩家请走 Releases。
+
+## 环境与运行（开发者）
 
 - **Godot 版本**：4.3 stable（`tools/Godot_v4.3-stable_win64_console.exe`，仓库未附带时请从 godotengine.org 下载 4.x）
 - **打开工程**：Godot 编辑器 → 导入 → 选择本项目根目录的 `project.godot`
 - **运行游戏**：编辑器中按 F5；或命令行：
   ```bash
   Godot_v4.3-stable_win64_console.exe --path . 
+  ```
+- **打包发布**：本仓库已含 `export_presets.cfg`（Windows 单文件 exe，内嵌资源），
+  安装 4.3 导出模板后执行：
+  ```bash
+  Godot_v4.3-stable_win64_console.exe --headless --export-release "Windows Desktop" build/DeepSeaScavenger.exe
   ```
 - 渲染使用 `gl_compatibility`，对老显卡友好；窗口 1280×720，支持缩放，UI 自适应。
 
