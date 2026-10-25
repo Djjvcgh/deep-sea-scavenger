@@ -52,13 +52,16 @@ func _build() -> void:
 	box.add_child(_back_btn)
 
 
-func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0) -> void:
+func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0, seed_id := -1) -> void:
 	visible = true
 	for c in _list_box.get_children():
 		c.queue_free()
 	var time_text := ""
 	if elapsed_sec >= 0.0:
-		time_text = "（用时 %d分%02d秒）" % [int(elapsed_sec) / 60, int(elapsed_sec) % 60]
+		time_text = "（用时 %d分%02d秒" % [int(elapsed_sec) / 60, int(elapsed_sec) % 60]
+		if seed_id >= 0:
+			time_text += " · 海况 #%d" % seed_id
+		time_text += "）"
 	if success:
 		_title.text = "撤离成功"
 		_title.add_theme_color_override("font_color", UICommon.GOLD)

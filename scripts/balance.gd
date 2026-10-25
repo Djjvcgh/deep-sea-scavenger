@@ -44,10 +44,7 @@ const SHARK_BITE_RETREAT := 1.1        # 咬人后强制脱离时间（给玩家
 const BITE_KNOCKBACK := 260.0          # 被咬时玩家的击退速度
 
 # ---- 下潜刷新 ----
-const SPAWN_A_ACTIVE := 3         # 区域A每次激活的宝物点数
-const SPAWN_B_ACTIVE := 3         # 区域B
-const SPAWN_C_ACTIVE := 2         # 区域C
-const SPAWN_EXTRA := 2            # 剩余点位中再随机激活的数量
+const ACTIVE_PER_DIVE := {"A": 4, "B": 4, "C": 3}   # 每次下潜各区域激活的宝物点数（种子随机挑点）
 
 # ---- 节奏 ----
 const FAIL_RESULT_DELAY := 0.7    # 失败后延迟多少秒弹出结算

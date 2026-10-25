@@ -235,18 +235,50 @@ func _test_save_roundtrip() -> int:
 
 
 func _test_map_data() -> int:
-	print("[地图数据]")
-	_check(MapData.CHEST_SPOTS.size() == 14, "宝物生成点共14个")
-	var counts := {"A": 0, "B": 0, "C": 0}
-	for spot in MapData.CHEST_SPOTS:
-		counts[MapData.zone_at(spot.x)] += 1
-		for r in MapData.SOLID_RECTS:
-			var rect := Rect2(r[0] - 16, r[1] - 16, r[2] + 32, r[3] + 32)
-			_check_quiet(not rect.has_point(spot), "宝物点 %s 不在实体地形内" % spot)
-	_check(counts["A"] == 5 and counts["B"] == 5 and counts["C"] == 4, "区域点位 5/5/4")
-	_check(quiet_fail == 0, "所有宝物点位于开阔水域")
-	for p in MapData.SHARK_PATROLS:
-		_check_quiet(p[1] > p[0], "鲨鱼巡逻区间有效 %s" % [p])
-	_check(MapData.EXTRACT_RECT.has_point(MapData.PLAYER_SPAWN + Vector2(0, -120)),
-		"撤离区可达（出生点上方在区内）")
+	print("[地图数据：变体校验]")
+	var expected_counts := {"A": 5, "B": 5, "C": 4}
+	var variant_count := 0
+	for zone in ["A", "B", "C"]:
+		var variants: Array = MapData.ZONE_VARIANTS[zone]
+		variant_count += variants.size()
+		for vi in variants.size():
+			var v: Dictionary = variants[vi]
+			var tag: String = "%s%d(%s)" % [zone, vi, v["name"]]
+			var solids: Array = MapData.SHARED_SOLIDS + v["solids"]
+
+			# 宝物点数量与位置合法性
+			_check(v["chests"].size() == expected_counts[zone], "%s 宝物点 %d 个" % [tag, expected_counts[zone]])
+			var chest_fail := 0
+			for spot in v["chests"]:
+				for r in solids:
+					var rect := Rect2(r[0] - 16, r[1] - 16, r[2] + 32, r[3] + 32)
+					if rect.has_point(spot):
+						_check_quiet(false, "%s 宝物点 %s 落在实体 %s 内" % [tag, spot, r])
+						chest_fail += 1
+			_check(chest_fail == 0, "%s 所有宝物点位于开阔水域" % tag)
+
+			# 巡逻带：区间有效且不与实体重叠（鲨鱼身体约 58x20）
+			var patrol_fail := 0
+			for p in v["patrols"]:
+				if p[1] <= p[0]:
+					_check_quiet(false, "%s 巡逻区间无效 %s" % [tag, p])
+					patrol_fail += 1
+				var band := Rect2(p[0] - 30, p[2] - 16, p[1] - p[0] + 60, 32)
+				for r in solids:
+					var rect := Rect2(r[0], r[1], r[2], r[3])
+					if band.intersects(rect):
+						_check_quiet(false, "%s 巡逻带 %s 穿过实体 %s" % [tag, p, r])
+						patrol_fail += 1
+			_check(patrol_fail == 0, "%s 巡逻带不穿墙" % tag)
+
+			# 三条安全通道（L1 底层爬行道 / L2 下潜斜线 / L3 上层航道）
+			var lane_fail := 0
+			for sample in MapData.lane_samples():
+				if not MapData.circle_clear(sample[0], sample[1], solids):
+					_check_quiet(false, "%s 通道被实体阻挡：点 %s" % [tag, sample[0]])
+					lane_fail += 1
+			_check(lane_fail == 0, "%s 三条安全通道贯通" % tag)
+
+	_check(variant_count == 9, "共 9 套布局变体（3 区域 × 3）")
+	_check(quiet_fail == 0, "变体数据全部合法")
 	return 0

@@ -185,9 +185,9 @@ func _process(delta: float) -> void:
 	_bag_label.text = "背包 %d/%d" % [GameState.bag_used_slots(), GameState.bag_capacity()]
 	_value_label.text = "本次估值 %d" % GameState.dive_total_value()
 
-	# 区域
+	# 区域（含变体名，体现本次"海况"）
 	if dive != null and is_instance_valid(player):
-		_zone_label.text = MapDataRes.zone_name(MapDataRes.zone_at(player.global_position.x))
+		_zone_label.text = dive.get_zone_label()
 
 	# 交互与搜索
 	var searching: bool = player.is_searching() and player.active_chest != null \

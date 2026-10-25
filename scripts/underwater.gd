@@ -1,5 +1,6 @@
 extends Node2D
-## 海底探索场景：地图搭建、宝物刷新、鲨鱼布置、撤离判定与下潜结算。
+## 海底探索场景：种子抽取区域布局变体、地图搭建（Kenney 素材环境层）、
+## 宝物刷新、鲨鱼布置、撤离判定与下潜结算。
 
 const MapDataRes := preload("res://scripts/map_data.gd")
 const BalanceRes := preload("res://scripts/balance.gd")
@@ -13,6 +14,20 @@ const InventoryScene := preload("res://scenes/ui/inventory_panel.tscn")
 const ResultsScene := preload("res://scenes/ui/results_panel.tscn")
 const PauseScene := preload("res://scenes/ui/pause_menu.tscn")
 
+const SPR := "res://assets/sprites/kenney_fish/"
+const FISH_COLORS := ["fish_blue", "fish_brown", "fish_green", "fish_grey",
+	"fish_orange", "fish_pink", "fish_red"]
+const SAND_TOPS := ["a", "b", "c", "d", "e", "f", "g", "h"]
+const DIRT_TOPS := ["a", "b", "c", "d", "e", "f", "g", "h"]
+const SAND_FILL := ["a", "b", "c", "d"]
+const FLORA := ["seaweed_green_a", "seaweed_green_b", "seaweed_green_c",
+	"seaweed_green_d", "seaweed_pink_a", "seaweed_pink_b", "seaweed_pink_c",
+	"seaweed_pink_d", "seaweed_orange_a", "seaweed_orange_b",
+	"seaweed_grass_a", "seaweed_grass_b"]
+const BG_FLORA := ["background_seaweed_a", "background_seaweed_b",
+	"background_seaweed_c", "background_seaweed_d", "background_seaweed_e",
+	"background_seaweed_f", "background_seaweed_g", "background_seaweed_h"]
+
 var player: CharacterBody2D
 var hud: CanvasLayer
 var inventory_panel: CanvasLayer
@@ -21,19 +36,25 @@ var pause_menu: CanvasLayer
 
 var in_extraction := false
 var ended := false
+var dive_seed := 0
 
+var _rng := RandomNumberGenerator.new()
+var _chosen := {}              # zone -> {"index": int, "variant": Dictionary}
 var _extract_area: Area2D
 var _seaweeds: Array = []
 var _bubbles: Array = []
+var _schools: Array = []
 var _shadow: Polygon2D
 var _canvas_mod: CanvasModulate
 var _shadow_t := 0.0
 var _tension_on := false
+var _tex_cache := {}
 
 
 func _ready() -> void:
 	GameState.start_dive()
 	player = $Player
+	_roll_layout()
 	_build_environment()
 	_build_terrain()
 	_build_extraction()
@@ -62,6 +83,31 @@ func _ready() -> void:
 	pause_menu.setup(true)
 
 	Sfx.play_ambient("ambient_underwater")
+
+
+func _exit_tree() -> void:
+	Sfx.stop_tension()
+
+
+## 每次下潜的随机种子决定三个区域各用哪套布局变体（"海况"）。
+func _roll_layout() -> void:
+	_rng.randomize()
+	dive_seed = _rng.randi()
+	_rng.seed = dive_seed
+	_chosen = {}
+	for zone in ["A", "B", "C"]:
+		var variants: Array = MapDataRes.ZONE_VARIANTS[zone]
+		var index := _rng.randi_range(0, variants.size() - 1)
+		_chosen[zone] = {"index": index, "variant": variants[index]}
+
+
+func get_zone_label() -> String:
+	if player == null or not is_instance_valid(player):
+		return ""
+	var zone := MapDataRes.zone_at(player.global_position.x)
+	if not _chosen.has(zone):
+		return MapDataRes.zone_name(zone)
+	return "%s · %s" % [MapDataRes.zone_name(zone), _chosen[zone]["variant"]["name"]]
 
 
 func _input(event: InputEvent) -> void:
@@ -103,11 +149,7 @@ func _end_dive(success: bool) -> void:
 	Sfx.stop_tension()
 	Sfx.play("sell" if success else "fail")
 	get_tree().paused = true
-	results_panel.open(success, items, total, elapsed)
-
-
-func _exit_tree() -> void:
-	Sfx.stop_tension()
+	results_panel.open(success, items, total, elapsed, dive_seed)
 
 
 func _on_dive_failed() -> void:
@@ -119,34 +161,30 @@ func _on_dive_failed() -> void:
 
 # ---------------- 刷新 ----------------
 
-## 每次下潜：A/B/C 各激活固定点位，再从剩余点位随机补足。
+## 从当前变体的宝物点中按种子随机激活一部分。
 func _spawn_chests() -> void:
-	var by_zone := {"A": [], "B": [], "C": []}
-	for spot in MapDataRes.CHEST_SPOTS:
-		by_zone[MapDataRes.zone_at(spot.x)].append(spot)
-	for zone in by_zone:
-		by_zone[zone].shuffle()
-
-	var counts := {"A": BalanceRes.SPAWN_A_ACTIVE, "B": BalanceRes.SPAWN_B_ACTIVE,
-		"C": BalanceRes.SPAWN_C_ACTIVE}
-	var active: Array = []
-	var rest: Array = []
 	for zone in ["A", "B", "C"]:
-		active.append_array(by_zone[zone].slice(0, counts[zone]))
-		rest.append_array(by_zone[zone].slice(counts[zone]))
-	rest.shuffle()
-	active.append_array(rest.slice(0, BalanceRes.SPAWN_EXTRA))
+		var spots: Array = (_chosen[zone]["variant"]["chests"] as Array).duplicate()
+		_shuffled(spots)
+		var count: int = mini(BalanceRes.ACTIVE_PER_DIVE[zone], spots.size())
+		for i in count:
+			var chest := ChestScene.instantiate()
+			chest.position = spots[i]
+			add_child(chest)
+			chest.setup(_roll_treasure(zone))
 
-	for spot in active:
-		var chest := ChestScene.instantiate()
-		chest.position = spot
-		add_child(chest)
-		chest.setup(_roll_treasure(MapDataRes.zone_at(spot.x)))
+
+func _shuffled(arr: Array) -> void:
+	for i in range(arr.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp = arr[i]
+		arr[i] = arr[j]
+		arr[j] = tmp
 
 
 func _roll_treasure(zone: String) -> String:
 	var weights: Dictionary = ItemDBRes.ZONE_WEIGHTS[zone]
-	var roll := randf()
+	var roll := _rng.randf()
 	var acc := 0.0
 	for id in weights:
 		acc += weights[id]
@@ -157,12 +195,36 @@ func _roll_treasure(zone: String) -> String:
 
 
 func _spawn_sharks() -> void:
-	for cfg in MapDataRes.SHARK_PATROLS:
+	for cfg in _chosen_zone_solids_patrols():
 		var shark := SharkScene.instantiate()
 		shark.position = Vector2((cfg[0] + cfg[1]) * 0.5, cfg[2])
 		shark.z_index = 4
 		add_child(shark)
 		shark.setup(cfg[0], cfg[1], cfg[2], player)
+
+
+func _chosen_zone_solids_patrols() -> Array:
+	var out: Array = []
+	for zone in ["B", "C"]:
+		out.append_array(_chosen[zone]["variant"]["patrols"])
+	return out
+
+
+func _solids_for(zone: String) -> Array:
+	return MapDataRes.variant_solids(zone, _chosen[zone]["index"])
+
+
+func _all_solids() -> Array:
+	var out: Array = []
+	for zone in ["A", "B", "C"]:
+		out.append_array(_solids_for(zone))
+	return out
+
+
+func _tex(name: String) -> Texture2D:
+	if not _tex_cache.has(name):
+		_tex_cache[name] = load(SPR + name + ".png")
+	return _tex_cache[name]
 
 
 # ---------------- 场景搭建 ----------------
@@ -215,36 +277,16 @@ func _build_environment() -> void:
 		poly.z_index = -15
 		add_child(poly)
 
-	# 海藻（摆动）
-	for d in MapDataRes.DECOR_RECTS:
-		if d[4] == "seaweed":
-			var line := Line2D.new()
-			var base_x: float = d[0] + d[2] * 0.5
-			var base_y: float = d[1] + d[3]
-			var h: float = d[3] * 3.0
-			line.points = PackedVector2Array([
-				Vector2(base_x, base_y), Vector2(base_x, base_y - h * 0.4),
-				Vector2(base_x, base_y - h * 0.7), Vector2(base_x, base_y - h)])
-			line.width = 5.0
-			line.default_color = Color(0.12, 0.35, 0.24)
-			line.z_index = -8
-			add_child(line)
-			_seaweeds.append({"line": line, "base": base_x, "top_y": base_y - h})
-		else:
-			var coral := Polygon2D.new()
-			coral.polygon = PackedVector2Array([
-				Vector2(d[0], d[1] + d[3]), Vector2(d[0] + d[2] * 0.3, d[1] - 14),
-				Vector2(d[0] + d[2] * 0.55, d[1] + d[3] * 0.4), Vector2(d[0] + d[2], d[1] + d[3])])
-			coral.color = Color(0.75, 0.35, 0.45)
-			coral.z_index = -8
-			add_child(coral)
+	_build_decor()
+	_build_fish_schools()
 
-	# 气泡
-	for i in 10:
-		var bubble := Polygon2D.new()
-		bubble.polygon = _ellipse(randf_range(3.0, 7.0), randf_range(3.0, 7.0), 8)
-		bubble.position = Vector2(randf_range(100, 5000), randf_range(100, 900))
-		bubble.color = Color(1, 1, 1, 0.18)
+	# 气泡（素材）
+	for i in 12:
+		var bubble := Sprite2D.new()
+		bubble.texture = _tex("bubble_%s" % ["a", "b", "c"][_rng.randi_range(0, 2)])
+		bubble.scale = Vector2.ONE * _rng.randf_range(0.12, 0.3)
+		bubble.position = Vector2(_rng.randf_range(100, 5000), _rng.randf_range(100, 900))
+		bubble.modulate = Color(1, 1, 1, 0.55)
 		bubble.z_index = -6
 		add_child(bubble)
 		_bubbles.append(bubble)
@@ -257,11 +299,6 @@ func _build_environment() -> void:
 	_shadow.z_index = -14
 	add_child(_shadow)
 
-	# 深度黑暗调制：区域C明显变暗，配合玩家潜水灯（能见度即风险）
-	_canvas_mod = CanvasModulate.new()
-	_canvas_mod.color = Color.WHITE
-	add_child(_canvas_mod)
-
 	# 沉船背景剪影
 	var silhouette := Polygon2D.new()
 	silhouette.polygon = PackedVector2Array([
@@ -271,41 +308,175 @@ func _build_environment() -> void:
 	silhouette.z_index = -10
 	add_child(silhouette)
 
+	# 深度黑暗调制：区域C明显变暗，配合玩家潜水灯（能见度即风险）
+	_canvas_mod = CanvasModulate.new()
+	_canvas_mod.color = Color.WHITE
+	add_child(_canvas_mod)
+
+
+## 按种子在海底散布植被与背景层（避开实体地形）。
+func _build_decor() -> void:
+	var solids := _all_solids()
+	var floor_y := {"A": 800.0, "B": 950.0, "C": 950.0}
+	var x_range := {"A": [80.0, 1650.0], "B": [1750.0, 3350.0], "C": [3520.0, 5080.0]}
+	var counts := {"A": 9, "B": 7, "C": 5}
+
+	for zone in ["A", "B", "C"]:
+		var placed := 0
+		var tries := 0
+		while placed < counts[zone] and tries < 60:
+			tries += 1
+			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
+			var y: float = floor_y[zone]
+			if not MapDataRes.circle_clear(Vector2(x, y - 26.0), 24.0, solids):
+				continue
+			placed += 1
+			var is_coral: bool = _rng.randf() < 0.3
+			var flora_name: String = FLORA[_rng.randi_range(0, FLORA.size() - 1)]
+			var s := _rng.randf_range(0.9, 1.6)
+			var pivot := Node2D.new()
+			pivot.position = Vector2(x, y + 4.0)
+			pivot.z_index = -8
+			var spr := Sprite2D.new()
+			spr.texture = _tex(flora_name)
+			spr.scale = Vector2.ONE * s
+			spr.offset = Vector2(0, -26.0)
+			pivot.add_child(spr)
+			add_child(pivot)
+			if is_coral:
+				spr.modulate = Color(1.0, 0.85, 0.9)
+			else:
+				_seaweeds.append({"pivot": pivot, "phase": _rng.randf() * TAU,
+					"amp": _rng.randf_range(0.05, 0.1)})
+
+		# 背景层植物与岩石（更暗、更大、无碰撞）
+		for i in 4:
+			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
+			var y: float = floor_y[zone]
+			var spr := Sprite2D.new()
+			spr.texture = _tex(BG_FLORA[_rng.randi_range(0, BG_FLORA.size() - 1)])
+			spr.scale = Vector2.ONE * _rng.randf_range(1.4, 2.2)
+			spr.position = Vector2(x, y - 30.0)
+			spr.modulate = Color(0.55, 0.66, 0.78, 0.8)
+			spr.z_index = -12
+			add_child(spr)
+		for i in 2:
+			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
+			var y: float = floor_y[zone]
+			var spr := Sprite2D.new()
+			spr.texture = _tex("background_rock_%s" % ["a", "b"][_rng.randi_range(0, 1)])
+			spr.scale = Vector2.ONE * _rng.randf_range(1.2, 2.0)
+			spr.position = Vector2(x, y - 26.0)
+			spr.modulate = Color(0.5, 0.6, 0.72, 0.85)
+			spr.z_index = -12
+			add_child(spr)
+
+
+## 环境鱼群：纯氛围，无碰撞，按种子生成。
+func _build_fish_schools() -> void:
+	var solids := _all_solids()
+	var ranges := [[300.0, 1600.0], [1800.0, 3300.0], [1800.0, 3300.0],
+		[3550.0, 5000.0], [3550.0, 5000.0]]
+	for r in ranges:
+		var center := Vector2.ZERO
+		var ok := false
+		for attempt in 8:
+			center = Vector2(_rng.randf_range(r[0], r[1]), _rng.randf_range(220.0, 760.0))
+			if MapDataRes.circle_clear(center, 90.0, solids):
+				ok = true
+				break
+		if not ok:
+			continue
+		var school := Node2D.new()
+		school.position = center
+		school.z_index = -7
+		var color: String = FISH_COLORS[_rng.randi_range(0, FISH_COLORS.size() - 1)]
+		for i in _rng.randi_range(4, 6):
+			var fish := Sprite2D.new()
+			fish.texture = _tex(color)
+			fish.scale = Vector2.ONE * _rng.randf_range(0.45, 0.7)
+			fish.position = Vector2(_rng.randf_range(-46.0, 46.0), _rng.randf_range(-20.0, 20.0))
+			fish.modulate = Color(1, 1, 1, 0.9)
+			school.add_child(fish)
+		add_child(school)
+		_schools.append({"node": school,
+			"min_x": r[0], "max_x": r[1],
+			"dir": 1.0 if _rng.randf() < 0.5 else -1.0,
+			"speed": _rng.randf_range(28.0, 55.0),
+			"phase": _rng.randf() * TAU})
+
+
+func _terrain_tiles(rect: Rect2, fill_name: String, top_name: String, mod: Color) -> void:
+	var body := Node2D.new()
+	body.z_index = 0
+	if rect.size.y <= 64.0:
+		body.add_child(_tiled(top_name, Rect2(rect.position, rect.size), mod))
+	else:
+		body.add_child(_tiled(top_name, Rect2(rect.position, Vector2(rect.size.x, 64.0)), mod))
+		body.add_child(_tiled(fill_name,
+			Rect2(rect.position + Vector2(0, 64.0), rect.size - Vector2(0, 64.0)), mod))
+	add_child(body)
+
+
+func _tiled(tex_name: String, rect: Rect2, mod: Color) -> Sprite2D:
+	var s := Sprite2D.new()
+	s.texture = _tex(tex_name)
+	s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	s.region_enabled = true
+	s.region_rect = Rect2(Vector2.ZERO, rect.size)
+	s.centered = false
+	s.position = rect.position
+	s.modulate = mod
+	return s
+
 
 func _build_terrain() -> void:
 	var body := StaticBody2D.new()
 	body.name = "Terrain"
 	body.collision_layer = 1
 	body.collision_mask = 0
-	for r in MapDataRes.SOLID_RECTS:
-		var rect := Rect2(r[0], r[1], r[2], r[3])
-		var cs := CollisionShape2D.new()
-		var shape := RectangleShape2D.new()
-		shape.size = rect.size
-		cs.shape = shape
-		cs.position = rect.get_center()
-		body.add_child(cs)
+	for zone in ["A", "B", "C"]:
+		for r in _solids_for(zone):
+			var rect := Rect2(r[0], r[1], r[2], r[3])
+			var kind: String = r[4]
+			var cs := CollisionShape2D.new()
+			var shape := RectangleShape2D.new()
+			shape.size = rect.size
+			cs.shape = shape
+			cs.position = rect.get_center()
+			body.add_child(cs)
 
-		var poly := Polygon2D.new()
-		poly.polygon = PackedVector2Array([
-			rect.position, rect.position + Vector2(rect.size.x, 0),
-			rect.end, rect.position + Vector2(0, rect.size.y)])
-		var base := Color(0.07, 0.12, 0.17)
-		var edge := Color(0.2, 0.28, 0.33)
-		if r[4] == "sand":
-			base = Color(0.16, 0.19, 0.2)
-			edge = Color(0.5, 0.45, 0.3)
-		elif r[4] == "wreck":
-			base = Color(0.19, 0.13, 0.08)
-			edge = Color(0.38, 0.27, 0.15)
-		poly.color = base
-		body.add_child(poly)
+			var edge := Color(0.2, 0.28, 0.33)
+			if kind == "sand":
+				edge = Color(0.5, 0.45, 0.3)
+				_terrain_tiles(rect, "terrain_sand_%s" % SAND_FILL[_rng.randi_range(0, 3)],
+					"terrain_sand_top_%s" % SAND_TOPS[_rng.randi_range(0, 7)], Color.WHITE)
+			elif kind == "wreck":
+				edge = Color(0.38, 0.27, 0.15)
+				_terrain_tiles(rect, "terrain_dirt_%s" % SAND_FILL[_rng.randi_range(0, 3)],
+					"terrain_dirt_top_%s" % DIRT_TOPS[_rng.randi_range(0, 7)],
+					Color(0.78, 0.6, 0.45))
+			elif rect.size.x <= 150.0 and rect.size.y <= 150.0:
+				# 小块岩石：整块素材铺贴
+				var spr := Sprite2D.new()
+				spr.texture = _tex("rock_%s" % ["a", "b"][_rng.randi_range(0, 1)])
+				spr.scale = rect.size / 64.0
+				spr.position = rect.get_center()
+				spr.flip_h = _rng.randf() < 0.5
+				spr.modulate = Color(0.82, 0.86, 0.92)
+				spr.z_index = 0
+				body.add_child(spr)
+			else:
+				edge = Color(0.24, 0.3, 0.38)
+				_terrain_tiles(rect, "terrain_dirt_%s" % SAND_FILL[_rng.randi_range(0, 3)],
+					"terrain_dirt_top_%s" % DIRT_TOPS[_rng.randi_range(0, 7)],
+					Color(0.6, 0.65, 0.76))
 
-		var top_line := Line2D.new()
-		top_line.points = PackedVector2Array([rect.position, rect.position + Vector2(rect.size.x, 0)])
-		top_line.width = 3.0
-		top_line.default_color = edge
-		body.add_child(top_line)
+			var top_line := Line2D.new()
+			top_line.points = PackedVector2Array([rect.position, rect.position + Vector2(rect.size.x, 0)])
+			top_line.width = 3.0
+			top_line.default_color = edge
+			body.add_child(top_line)
 	add_child(body)
 
 
@@ -362,16 +533,21 @@ func _process(delta: float) -> void:
 	_shadow.position.x = 4650.0 + sin(_shadow_t * 0.12) * 90.0
 	_shadow.position.y = 160.0 + sin(_shadow_t * 0.21) * 24.0
 	for weed in _seaweeds:
-		var pts: PackedVector2Array = weed["line"].points.duplicate()
-		var sway := sin(_shadow_t * 1.4 + weed["base"] * 0.05) * 7.0
-		pts[3] = Vector2(weed["base"] + sway, weed["top_y"])
-		pts[2] = Vector2(weed["base"] + sway * 0.5, weed["top_y"] + 30.0)
-		weed["line"].points = pts
+		weed["pivot"].rotation = sin(_shadow_t * 1.4 + weed["phase"]) * weed["amp"]
 	for b in _bubbles:
 		b.position.y -= randf_range(14.0, 30.0) * delta * 3.0
 		if b.position.y < 20.0:
 			b.position.y = 900.0
 			b.position.x = randf_range(100, 5000)
+	for school in _schools:
+		var node: Node2D = school["node"]
+		node.position.x += school["dir"] * school["speed"] * delta
+		node.position.y += sin(_shadow_t * 1.1 + school["phase"]) * 6.0 * delta
+		if node.position.x > school["max_x"]:
+			school["dir"] = -1.0
+		elif node.position.x < school["min_x"]:
+			school["dir"] = 1.0
+		node.scale.x = -school["dir"]   # 素材鱼头朝左：向左游 scale=1
 
 	# 深度黑暗：按区域平滑过渡
 	if player != null and is_instance_valid(player):

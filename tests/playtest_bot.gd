@@ -121,8 +121,9 @@ func _scenario_escape() -> void:
 	player.reset_for_dive()
 	var shark = get_nodes_in_group("sharks")[0]
 	shark.set_physics_process(true)
-	shark.position = Vector2(2200.0, 400.0)
-	player.global_position = Vector2(2500.0, 400.0)
+	# 鲨鱼贴近巡逻带右端，与玩家初始距离 170 < 180，立即警觉
+	shark.position = Vector2(shark.patrol_max_x - 20.0, shark.patrol_y)
+	player.global_position = Vector2(shark.patrol_max_x + 150.0, shark.patrol_y)
 	await create_timer(0.2).timeout
 
 	# 等待进入追逐
@@ -156,7 +157,7 @@ func _scenario_pinned() -> void:
 	printerr("========== 试玩3：被贴身时的反应窗口 ==========")
 	player.reset_for_dive()
 	var shark = get_nodes_in_group("sharks")[0]
-	shark.position = Vector2(2200.0, 400.0)
+	shark.position = Vector2(shark.patrol_min_x, shark.patrol_y)
 	player.global_position = shark.global_position + Vector2(6.0, 0.0)
 	await create_timer(0.2).timeout
 
