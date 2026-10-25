@@ -224,10 +224,13 @@ func _process(delta: float) -> void:
 		_search_bar.visible = true
 		_search_bar.value = player.active_chest.search_ratio() * 100.0
 	elif player.focus_target != null:
-		if player.focus_target.has_method("begin_search"):
-			_prompt_label.text = "长按 E 搜索：%s" % player.focus_target.interact_prompt()
+		var target = player.focus_target
+		if target.has_method("prompt_verb"):
+			_prompt_label.text = "%s：%s" % [target.prompt_verb(), target.interact_prompt()]
+		elif target.has_method("begin_search"):
+			_prompt_label.text = "长按 E 搜索：%s" % target.interact_prompt()
 		else:
-			_prompt_label.text = "按 E：%s" % player.focus_target.interact_prompt()
+			_prompt_label.text = "按 E：%s" % target.interact_prompt()
 		_search_bar.visible = false
 	else:
 		_prompt_label.text = ""

@@ -9,9 +9,10 @@ const ItemDBRes := preload("res://scripts/item_db.gd")
 var container_kind := "chest"
 var container_name := "沉船宝箱"
 var search_total := 3.0
-var looted := false
+var looted := false                 # 已完成首次搜索
 var search_progress := 0.0
 var loot_provider: Callable = Callable()
+var _remaining: Array = []          # 已开箱但未取走的掉落（留在箱里可再取）
 
 var _glow: Polygon2D
 var _core_glow: Polygon2D
@@ -31,11 +32,28 @@ func setup_container(cfg: Dictionary) -> void:
 
 
 func is_available() -> bool:
-	return not looted
+	if container_kind == "cache":
+		return not GameState.lost_cache.is_empty()
+	return (not looted) or not _remaining.is_empty()
 
 
 func interact_prompt() -> String:
+	if looted:
+		var n := remaining_count()
+		if n > 0:
+			return "%s（余 %d 件）" % [container_name, n]
 	return container_name
+
+
+## HUD 提示动词：未开 = 长按搜索；已开有剩余 = 按 E 打开
+func prompt_verb() -> String:
+	return "长按 E 搜索" if not looted else "按 E 打开"
+
+
+func remaining_count() -> int:
+	if container_kind == "cache":
+		return GameState.lost_cache.get("items", []).size()
+	return _remaining.size()
 
 
 func begin_search() -> void:
@@ -58,25 +76,39 @@ func search_ratio() -> float:
 	return clampf(search_progress / search_total, 0.0, 1.0)
 
 
-## 搜索完成：标记已搜取并生成掉落条目。
+## 搜索完成（首次）或按 E 重新打开：返回当前可取的掉落条目。
 func collect_loot() -> Array:
-	if looted:
-		return []
-	looted = true
-	search_progress = 0.0
-	_glow.visible = false
-	if _core_glow != null:
-		_core_glow.visible = false
-	_apply_looted_visual()
-	if loot_provider.is_valid():
-		return loot_provider.call()
-	return []
+	var out: Array = []
+	if container_kind == "cache":
+		# 遗落物袋：每次打开都从缓存取出全部内容
+		_glow.visible = false
+		if _core_glow != null:
+			_core_glow.visible = false
+		if loot_provider.is_valid():
+			out = loot_provider.call()
+	else:
+		if not looted:
+			looted = true
+			search_progress = 0.0
+			_glow.visible = false
+			if _core_glow != null:
+				_core_glow.visible = false
+			_apply_looted_visual()
+			if loot_provider.is_valid():
+				_remaining = loot_provider.call()
+		out = _remaining
+		_remaining = []
+	return out
 
 
-## 遗落物袋专用：拾取面板关闭时把未取走的条目放回缓存。
+## 拾取面板关闭：遗落物袋放回缓存；其他容器剩余物品留在箱内（可再次打开）。
 func restore_leftovers(entries: Array) -> void:
-	if container_kind == "cache" and not entries.is_empty():
+	if entries.is_empty():
+		return
+	if container_kind == "cache":
 		GameState.restore_to_cache(entries)
+	else:
+		_remaining = entries
 
 
 func _apply_looted_visual() -> void:

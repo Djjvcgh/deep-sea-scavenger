@@ -27,7 +27,8 @@ func _load_underwater() -> void:
 
 func _find_container(filter_kind := "chest", max_x := 1500.0) -> Node:
 	for n in get_nodes_in_group("interactables"):
-		if "collect_loot" in n and n.container_kind == filter_kind and n.global_position.x < max_x:
+		if "collect_loot" in n and n.container_kind == filter_kind \
+				and n.global_position.x < max_x and not n.looted:
 			return n
 	return null
 
@@ -51,6 +52,12 @@ func _run() -> void:
 
 	var chest = _find_container()
 	_check(chest != null, "场景中存在宝箱")
+
+	var small_containers := 0
+	for n in get_nodes_in_group("interactables"):
+		if "collect_loot" in n and (n.container_kind == "shell" or n.container_kind == "trash_bag"):
+			small_containers += 1
+	_check(small_containers >= 12, "小型容器已散布（%d 个）" % small_containers)
 
 	player.global_position = chest.global_position + Vector2(0, -40)
 	await create_timer(0.3).timeout
@@ -77,15 +84,15 @@ func _run() -> void:
 	_check(player.hp == hp_before - 1, "无敌时间内不会重复受伤")
 	await create_timer(Balance.INVINCIBLE_TIME).timeout
 
-	# 背包满时开箱：物品拿不走
+	# 背包满时开箱：物品留在箱内，可再次打开取走
 	var fill: int = gs.bag_capacity() - gs.bag_used_slots()
 	while fill >= 1:
 		gs.add_dive_item("old_coin")
 		fill -= 1
-	player.global_position = chest.global_position + Vector2(0, -40)
-	await create_timer(0.3).timeout
 	var chest2 = _find_container()
 	if chest2 != null:
+		player.global_position = chest2.global_position + Vector2(0, -40)
+		await create_timer(0.3).timeout
 		Input.action_press("interact")
 		await create_timer(4.0).timeout
 		Input.action_release("interact")
@@ -94,6 +101,23 @@ func _run() -> void:
 		uw.loot_panel.take_all_and_close()
 		await process_frame
 		_check(gs.dive_bag.size() == bag_size, "背包满时无法拾取更多")
+		_check(not uw.loot_panel.visible, "一件都拿不走时面板自动关闭")
+		_check(chest2.remaining_count() > 0, "剩余物品留在箱内（%d 件）" % chest2.remaining_count())
+		_check(chest2.is_available(), "已开宝箱保持可交互")
+		# 丢弃两件腾出空间，按 E 重新打开取走剩余
+		gs.remove_dive_item_at(gs.dive_bag.size() - 1)
+		gs.remove_dive_item_at(gs.dive_bag.size() - 1)
+		player.global_position = chest2.global_position + Vector2(0, -40)
+		await create_timer(0.3).timeout
+		Input.action_press("interact")
+		await create_timer(0.15).timeout
+		Input.action_release("interact")
+		await create_timer(0.3).timeout
+		_check(uw.loot_panel.visible, "已开宝箱可按 E 重新打开")
+		var bag_before: int = gs.dive_bag.size()
+		uw.loot_panel.take_all_and_close()
+		await process_frame
+		_check(gs.dive_bag.size() > bag_before, "重新打开后取走剩余物品")
 	else:
 		print("  [跳过] 未找到第二个宝箱")
 	await create_timer(1.0).timeout

@@ -80,21 +80,21 @@ func close() -> void:
 	closed.emit()
 
 
-## 逐件拾取（只拿装得下的），然后关闭。
+## 逐件拾取（只拿装得下的）。一件都没拿走时自动关闭（物品留在来源处）。
 func take_all_and_close() -> void:
-	var skipped := 0
+	var taken := 0
 	var i := 0
 	while i < _entries.size():
 		if _try_take(i):
+			taken += 1
 			continue       # 拿走后原位补位，不前进下标
 		i += 1
-	skipped = _entries.size()
-	if skipped > 0:
-		_flash_label.text = "背包空间不足，%d 件未带走" % skipped
-		Sfx.play("click")
-	_refresh()
-	if _entries.is_empty():
+	if taken == 0 or _entries.is_empty():
 		close()
+	else:
+		_flash_label.text = "背包空间不足，%d 件未带走" % _entries.size()
+		Sfx.play("click")
+		_refresh()
 
 
 func _try_take(index: int) -> bool:

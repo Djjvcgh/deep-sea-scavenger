@@ -157,15 +157,22 @@ func _update_interact() -> void:
 		elif active_chest.add_search(get_physics_process_delta_time()) >= 1.0:
 			_complete_loot()
 	elif not control_locked and holding and focus_target != null \
-			and focus_target.has_method("begin_search"):
+			and focus_target.has_method("begin_search") and not focus_target.looted:
 		active_chest = focus_target
 		active_chest.begin_search()
 		control_locked = true
 
 	if active_chest == null and not control_locked and focus_target != null \
-			and focus_target.has_method("interact") \
 			and Input.is_action_just_pressed("interact"):
-		focus_target.interact(self)
+		# 已打开且仍有剩余的容器：按 E 重新打开取物
+		if focus_target.has_method("begin_search") and focus_target.looted \
+				and focus_target.is_available():
+			var entries: Array = focus_target.collect_loot()
+			if not entries.is_empty():
+				control_locked = true
+				loot_collected.emit(entries, focus_target)
+		elif focus_target.has_method("interact"):
+			focus_target.interact(self)
 
 
 func _cancel_search() -> void:

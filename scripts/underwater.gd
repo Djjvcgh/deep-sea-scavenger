@@ -233,7 +233,16 @@ func _spawn_containers() -> void:
 			tries += 1
 			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
 			var y: float = floor_y[zone] - 16.0
-			if not MapDataRes.circle_clear(Vector2(x, y), 30.0, solids):
+			# 避障检查点抬高到离地 30px：贴地 16px 会被海床自身的间隙检查否决
+			if not MapDataRes.circle_clear(Vector2(x, y - 14.0), 26.0, solids):
+				continue
+			# 与宝箱点保持距离，避免视觉堆叠
+			var near_chest := false
+			for cs in _chosen[zone]["variant"]["chests"]:
+				if Vector2(cs.x, cs.y).distance_to(Vector2(x, y)) < 60.0:
+					near_chest = true
+					break
+			if near_chest:
 				continue
 			var kind := "shell" if _rng.randf() < 0.5 else "trash_bag"
 			var c := ChestScene.instantiate()
