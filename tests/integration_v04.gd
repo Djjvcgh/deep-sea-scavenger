@@ -27,7 +27,7 @@ func _run() -> void:
 	if FileAccess.file_exists(save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
 
-	OS.set_environment("DEEPSEA_SEED", "1")
+	OS.set_environment("DEEPSEA_SEED", "0")
 	change_scene_to_file("res://scenes/underwater.tscn")
 	await process_frame
 	await process_frame
@@ -161,7 +161,7 @@ func _run() -> void:
 ## 沉船主题种子：进入船长室触发幽灵船长 → 击杀 → 战利品袋。
 func _test_ghost_captain(uw, player) -> void:
 	var gs = root.get_node("GameState")
-	OS.set_environment("DEEPSEA_SEED", "27")
+	OS.set_environment("DEEPSEA_SEED", "0")
 	change_scene_to_file("res://scenes/underwater.tscn")
 	await process_frame
 	await process_frame

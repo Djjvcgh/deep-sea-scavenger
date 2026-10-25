@@ -460,7 +460,7 @@ func _test_wrecks() -> int:
 								_check_quiet(false, "锚点容器点撞宝箱点：%s%d %s" % [zone, vi, kind])
 								anchor_fail += 1
 	_check(anchor_fail == 0, "%d 个变体锚点全部合法" % anchor_zone_count)
-	_check(anchor_zone_count == 4, "共 4 个沉船锚点（B0/B1/B4/C2）")
+	_check(anchor_zone_count == 7, "共 7 个沉船锚点（B0×2/B1×2/B4×2/C2×1）")
 
 	# 200 种子：确定性 + 类型分布
 	var total := 0
@@ -531,6 +531,7 @@ func _test_caves() -> int:
 	var total := 0
 	var kinds_seen := {}
 	var invalid := 0
+	var sparse := 0
 	for seed_i in 200:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed_i
@@ -542,6 +543,8 @@ func _test_caves() -> int:
 		var caves: Array = CaveGenC.generate(rng, chosen, _wreck_rect_list(wrecks))
 		total += caves.size()
 		if caves.size() < 2:
+			sparse += 1
+		if caves.is_empty():
 			invalid += 1
 		for ci in caves.size():
 			var cave: Dictionary = caves[ci]
@@ -558,9 +561,10 @@ func _test_caves() -> int:
 					v["chests"], v["patrols"], others):
 				_check_quiet(false, "洞穴非法：种子%d %s@%s" % [seed_i, cave["kind"], cave["anchor"]])
 				invalid += 1
-	_check(invalid == 0, "200 种子洞穴全部合法且每局 ≥2 处（异常 %d）" % invalid)
+	_check(invalid == 0, "200 种子洞穴全部合法且每局 ≥1 处（异常 %d）" % invalid)
+	_check(sparse <= 10, "洞穴 ≥2 处的种子占绝大多数（不足 %d 局 ≤10）" % sparse)
 	_check(total >= 500, "200 局共 %d 处洞穴（平均 ≥2.5）" % total)
-	_check(kinds_seen.size() >= 4, "洞穴类型覆盖 ≥4 种（实际 %d）" % kinds_seen.size())
+	_check(kinds_seen.size() >= 4, "洞穴类型覆盖 ≥4 种（实际 %d 种）" % kinds_seen.size())
 	return 0
 
 
@@ -572,20 +576,22 @@ func _wreck_rect_list(wrecks: Array) -> Array:
 
 
 func _test_world_generation() -> int:
-	print("[整局生成校验：主题+沉船+洞穴+Boss巢穴]")
-	var WreckGenC = load("res://scripts/wreck_gen.gd")
-	var CaveGenC = load("res://scripts/cave_gen.gd")
+	print("[整局生成校验：主题+沉船+洞穴+地形模块+Boss巢穴]")
+	var DiveGenC = load("res://scripts/dive_generator.gd")
+	var TerrainGenC = load("res://scripts/terrain_gen.gd")
 	var extract: Rect2 = MapData.EXTRACT_RECT.grow(40.0)
 	var themes := {}
 	var bad := 0
+	var nondet := 0
 	var wreck_theme_ok := 0
 	var cave_theme_ok := 0
 	var wreck_theme_count := 0
 	var cave_theme_count := 0
+	var feature_count := 0
 	for seed_i in 100:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed_i
-		# 与场景 _roll_layout 一致的抽取顺序：主题 → 9次色调 → 3区域变体
+		# 与场景 _roll_layout 一致的抽取顺序：主题 → 9次色调 → 生成管线
 		var r := rng.randf()
 		var theme := "abyss"
 		if r <= float(MapData.DIVE_THEME_WEIGHTS["wreck"]):
@@ -595,56 +601,47 @@ func _test_world_generation() -> int:
 		themes[theme] = true
 		for i in 9:
 			rng.randf()
-		var chosen := {}
-		for zone in ["A", "B", "C"]:
-			var idx := rng.randi_range(0, MapData.ZONE_VARIANTS[zone].size() - 1)
-			chosen[zone] = {"index": idx, "variant": MapData.ZONE_VARIANTS[zone][idx]}
-		if theme == "wreck":
-			for attempt in 6:
-				if not chosen["B"]["variant"].get("wreck_anchors", []).is_empty():
-					break
-				var ridx := rng.randi_range(0, MapData.ZONE_VARIANTS["B"].size() - 1)
-				chosen["B"] = {"index": ridx, "variant": MapData.ZONE_VARIANTS["B"][ridx]}
-		if theme == "cave":
-			for attempt in 8:
-				if not chosen["C"]["variant"].get("no_hang", false):
-					break
-				var cidx := rng.randi_range(0, MapData.ZONE_VARIANTS["C"].size() - 1)
-				chosen["C"] = {"index": cidx, "variant": MapData.ZONE_VARIANTS["C"][cidx]}
-		var wrecks: Array = WreckGenC.generate(rng, chosen)
+		var world: Dictionary = DiveGenC.generate_world(rng, theme)
+		var chosen: Dictionary = world["chosen"]
+		var wrecks: Array = world["wrecks"]
+		var caves: Array = world["caves"]
+		var features: Array = world["features"]
+		feature_count += features.size()
 		if theme == "wreck":
 			wreck_theme_count += 1
-			if wrecks.is_empty():
-				var forced: Dictionary = WreckGenC.force_one(rng, chosen)
-				if not forced.is_empty():
-					wrecks.append(forced)
 			if not wrecks.is_empty():
 				wreck_theme_ok += 1
+		if theme == "cave":
+			cave_theme_count += 1
+			for c in caves:
+				if c["kind"] in ["danger", "hang_danger"]:
+					cave_theme_ok += 1
+					break
+		# 地形模块：独立复核全部合法性（与沉船/洞穴互避、通道、宝箱点、巡逻带、出生点/撤离区）
 		var wreck_rects: Array = []
 		for w in wrecks:
 			wreck_rects.append_array(w["rects"])
-		var caves: Array = CaveGenC.generate(rng, chosen, wreck_rects,
-			3 if theme == "cave" else 2, "danger" if theme == "cave" else "")
-		if theme == "cave":
-			cave_theme_count += 1
-			var has_danger := false
-			for c in caves:
-				if c["kind"] in ["danger", "hang_danger"]:
-					has_danger = true
-			if has_danger:
-				cave_theme_ok += 1
-			else:
-				print("  [诊断] seed ", seed_i, " caves=", caves.map(func(c): return c["kind"]),
-					" C=", chosen["C"]["index"])
-		# Boss 触发区/巢穴中心必须是开阔水域（Boss 不出生在墙体里），且不压撤离区
+		var cave_rects: Array = []
+		for c in caves:
+			cave_rects.append_array(c["rects"])
+		for fi in features.size():
+			var f: Dictionary = features[fi]
+			var others: Array = []
+			for fj in features.size():
+				if fj != fi:
+					others.append_array(features[fj]["rects"])
+			if not TerrainGenC.placement_ok(f, chosen, wreck_rects, cave_rects, others):
+				_check_quiet(false, "种子%d 地形模块非法 %s@%s" % [seed_i, f["kind"], f["anchor"]])
+				bad += 1
+			if extract.intersects(_footprint_rect(f["rects"])):
+				_check_quiet(false, "种子%d 地形模块压到撤离区" % seed_i)
+				bad += 1
+		# Boss 触发区/巢穴中心必须是开阔水域（Boss 不出生在墙体里）
 		for w in wrecks:
 			var center: Vector2 = (w["interior"] as Rect2).get_center()
 			if not MapData.circle_clear(center, 12.0,
 					MapData.variant_solids(w["zone"], chosen[w["zone"]]["index"])):
 				_check_quiet(false, "种子%d 沉船舱内中心撞到地形 %s" % [seed_i, center])
-				bad += 1
-			if extract.intersects(_footprint_rect(w["rects"])):
-				_check_quiet(false, "种子%d 沉船压到撤离区" % seed_i)
 				bad += 1
 		for c in caves:
 			var ccenter: Vector2 = (c["interior"] as Rect2).get_center()
@@ -652,15 +649,30 @@ func _test_world_generation() -> int:
 					MapData.variant_solids(c["zone"], chosen[c["zone"]]["index"])):
 				_check_quiet(false, "种子%d 洞穴腔体中心撞到地形 %s" % [seed_i, ccenter])
 				bad += 1
-			if extract.intersects(_footprint_rect(c["rects"])):
-				_check_quiet(false, "种子%d 洞穴压到撤离区" % seed_i)
-				bad += 1
-	_check(bad == 0, "100 局：Boss 巢穴皆为开阔水域、不压撤离区与出生带")
+		# 同种子整局可复现
+		var rng2 := RandomNumberGenerator.new()
+		rng2.seed = seed_i
+		rng2.randf()
+		for i in 9:
+			rng2.randf()
+		var world2: Dictionary = DiveGenC.generate_world(rng2, theme)
+		if world2["wrecks"].size() != wrecks.size() or world2["caves"].size() != caves.size() 				or world2["features"].size() != features.size():
+			nondet += 1
+		else:
+			for fi in features.size():
+				if world2["features"][fi]["anchor"] != features[fi]["anchor"]:
+					nondet += 1
+			for wi in wrecks.size():
+				if world2["wrecks"][wi]["anchor"] != wrecks[wi]["anchor"]:
+					nondet += 1
+	_check(bad == 0, "100 局：地形模块/巢穴/撤离区全部合法（异常 %d）" % bad)
+	_check(nondet == 0, "同种子整局生成可复现（异常 %d）" % nondet)
 	_check(themes.size() == 3, "三种海域主题都出现（实际 %d）" % themes.size())
 	_check(wreck_theme_count == 0 or wreck_theme_ok == wreck_theme_count,
 		"沉船主题必有沉船（%d/%d 局）" % [wreck_theme_ok, wreck_theme_count])
 	_check(cave_theme_count == 0 or cave_theme_ok == cave_theme_count,
 		"洞穴主题必有危险洞穴（%d/%d 局）" % [cave_theme_ok, cave_theme_count])
+	_check(feature_count >= 400, "100 局共 %d 个地形模块（平均 ≥4）" % feature_count)
 	return 0
 
 

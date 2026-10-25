@@ -8,6 +8,7 @@ const ItemDBRes := preload("res://scripts/item_db.gd")
 const PlayerScript := preload("res://scripts/player.gd")
 const WreckGenRes := preload("res://scripts/wreck_gen.gd")
 const CaveGenRes := preload("res://scripts/cave_gen.gd")
+const DiveGeneratorRes := preload("res://scripts/dive_generator.gd")
 
 const ChestScene := preload("res://scenes/treasure_chest.tscn")
 const SharkScene := preload("res://scenes/shark.tscn")
@@ -80,6 +81,8 @@ var _wreck_seen := {}          # 已提示过发现的沉船下标
 var _caves: Array = []         # 本次下潜生成的洞穴（CaveGen.generate 结果）
 var _cave_solids := {}         # zone -> 洞穴实体矩形（并入地形系统）
 var _cave_seen := {}           # 已提示过发现的洞穴下标
+var _features: Array = []      # 本次下潜生成的地形模块（沙丘/岩塔/石拱等）
+var _feature_solids := {}      # zone -> 地形模块实体矩形（并入地形系统）
 var _extract_area: Area2D
 var _seaweeds: Array = []
 var _bubbles: Array = []
@@ -169,52 +172,25 @@ func _roll_layout() -> void:
 	_water_tint = Color(_rng.randf_range(0.86, 1.0), _rng.randf_range(0.9, 1.0), _rng.randf_range(0.9, 1.02))
 	_sand_tint = Color(_rng.randf_range(0.9, 1.06), _rng.randf_range(0.93, 1.02), _rng.randf_range(0.82, 1.0))
 	_rock_tint = Color(_rng.randf_range(0.84, 1.06), _rng.randf_range(0.87, 1.02), _rng.randf_range(0.9, 1.06))
-	for zone in ["A", "B", "C"]:
-		var variants: Array = MapDataRes.ZONE_VARIANTS[zone]
-		var index := _rng.randi_range(0, variants.size() - 1)
-		_chosen[zone] = {"index": index, "variant": variants[index]}
-	# 沉船主题：B 区变体无沉船锚点时按种子重抽（幽灵船长需要触发点）
-	if dive_theme == "wreck":
-		for attempt in 6:
-			if not _chosen["B"]["variant"].get("wreck_anchors", []).is_empty():
-				break
-			var idx := _rng.randi_range(0, MapDataRes.ZONE_VARIANTS["B"].size() - 1)
-			_chosen["B"] = {"index": idx, "variant": MapDataRes.ZONE_VARIANTS["B"][idx]}
-	# 洞穴主题：无悬洞空间的变体按种子重抽（海蛇需要潜伏点）
-	if dive_theme == "cave":
-		for attempt in 8:
-			if not _chosen["C"]["variant"].get("no_hang", false):
-				break
-			var cidx := _rng.randi_range(0, MapDataRes.ZONE_VARIANTS["C"].size() - 1)
-			_chosen["C"] = {"index": cidx, "variant": MapDataRes.ZONE_VARIANTS["C"][cidx]}
-	# 沉船遗址：按种子激活变体锚点（0~2 艘，合法性由变体数据校验保证）；
-	# 沉船主题保证至少一艘（幽灵船长需要触发点）
-	_wrecks = WreckGenRes.generate(_rng, _chosen)
-	if dive_theme == "wreck" and _wrecks.is_empty():
-		var forced: Dictionary = WreckGenRes.force_one(_rng, _chosen)
-		if not forced.is_empty():
-			_wrecks.append(forced)
+	# 世界生成管线：变体选择（含主题重抽）→ 沉船 → 洞穴 → 地形模块（同种子同地图）
+	var world := DiveGeneratorRes.generate_world(_rng, dive_theme)
+	_chosen = world["chosen"]
+	_wrecks = world["wrecks"]
 	_wreck_solids = {"A": [], "B": [], "C": []}
 	for w in _wrecks:
 		for r in w["rects"]:
 			_wreck_solids[w["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, "wreck"])
-	# 洞穴：2~4 处（海床岩洞 / 深渊悬洞），避让沉船与既有地形；
-	# 洞穴主题保底 3 处且保证一处危险洞穴（海蛇需要潜伏点）
-	var cave_min := 3 if dive_theme == "cave" else 2
-	var cave_force := "danger" if dive_theme == "cave" else ""
-	_caves = CaveGenRes.generate(_rng, _chosen, _all_wreck_rects(), cave_min, cave_force)
+	_caves = world["caves"]
 	_cave_solids = {"A": [], "B": [], "C": []}
 	for c in _caves:
 		for r in c["rects"]:
 			# kind "cave"：走完整矩形平铺+碰撞路径（避免落入 rock_blob 小圆石分支，墙必须有实体）
 			_cave_solids[c["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, "cave"])
-
-
-func _all_wreck_rects() -> Array:
-	var out: Array = []
-	for w in _wrecks:
-		out.append_array(w["rects"])
-	return out
+	_features = world["features"]
+	_feature_solids = {"A": [], "B": [], "C": []}
+	for f in _features:
+		for r in f["rects"]:
+			_feature_solids[f["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, f["kind"]])
 
 
 func get_zone_label() -> String:
@@ -683,7 +659,8 @@ func _chosen_zone_solids_patrols() -> Array:
 
 func _solids_for(zone: String) -> Array:
 	return MapDataRes.variant_solids(zone, _chosen[zone]["index"]) \
-		+ _wreck_solids.get(zone, []) + _cave_solids.get(zone, [])
+		+ _wreck_solids.get(zone, []) + _cave_solids.get(zone, []) \
+		+ _feature_solids.get(zone, [])
 
 
 func _all_solids() -> Array:

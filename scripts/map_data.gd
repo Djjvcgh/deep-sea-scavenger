@@ -95,7 +95,8 @@ const ZONE_VARIANTS := {
 			"chests": [Vector2(1950, 880), Vector2(2350, 630), Vector2(2700, 500),
 				Vector2(3050, 880), Vector2(3250, 880)],
 			"patrols": [[1850.0, 2350.0, 400.0], [2850.0, 3350.0, 660.0]],
-			"wreck_anchors": [{"x": 2360.0, "kinds": ["merchant", "pirate", "ritual"]}],
+			"wreck_anchors": [{"x": 2360.0, "kinds": ["merchant", "pirate", "ritual"]},
+				{"x": 2280.0, "kinds": ["merchant", "ritual"]}],
 		},
 		{
 			"name": "双桅废墟",
@@ -105,7 +106,8 @@ const ZONE_VARIANTS := {
 			"chests": [Vector2(1950, 880), Vector2(2250, 620), Vector2(2700, 480),
 				Vector2(3000, 880), Vector2(3300, 880)],
 			"patrols": [[1800.0, 2300.0, 420.0], [2900.0, 3350.0, 620.0]],
-			"wreck_anchors": [{"x": 2425.0, "kinds": ["merchant", "pirate", "ritual"]}],
+			"wreck_anchors": [{"x": 2425.0, "kinds": ["merchant", "pirate", "ritual"]},
+				{"x": 2270.0, "kinds": ["merchant", "ritual"]}],
 		},
 		{
 			"name": "尖塔礁林",
@@ -135,7 +137,8 @@ const ZONE_VARIANTS := {
 			"chests": [Vector2(2100, 880), Vector2(2400, 620), Vector2(2750, 500),
 				Vector2(3050, 880), Vector2(3250, 880)],
 			"patrols": [[2320.0, 2800.0, 430.0], [2900.0, 3350.0, 620.0]],
-			"wreck_anchors": [{"x": 2570.0, "kinds": ["merchant", "pirate", "ritual"]}],
+			"wreck_anchors": [{"x": 2570.0, "kinds": ["merchant", "pirate", "ritual"]},
+				{"x": 2420.0, "kinds": ["merchant", "ritual"]}],
 		},
 	],
 	"C": [
@@ -300,6 +303,34 @@ const FLOOR_CAVE_ZONES := {
 	"A": {"floor_y": 800.0, "x_range": [140.0, 1560.0]},
 	"B": {"floor_y": 950.0, "x_range": [1800.0, 2820.0]},
 }
+
+
+## ---- V0.4 每潜地形模块：手工模板 + 种子布置（在沉船/洞穴之后生成，避开一切已放结构） ----
+## kind 决定渲染与碰撞路径：sand → 沙面平铺（沙丘）；cave → 灰岩完整矩形平铺（避免落入 rock_blob 小圆石分支）。
+const TERRAIN_TEMPLATES := {
+	"dune_high": {"name": "沙丘", "kind": "sand",
+		"rects": [[-110, -60, 220, 60], [-60, -110, 120, 50]]},
+	"rock_spire": {"name": "岩塔", "kind": "cave", "rects": [[-22, -190, 44, 190]]},
+	"arch": {"name": "石拱", "kind": "cave",
+		"rects": [[-120, -150, 34, 150], [86, -150, 34, 150], [-120, -176, 240, 26]]},
+	"dune_low": {"name": "沙脊", "kind": "sand", "rects": [[-90, -30, 180, 30]]},
+	"hang_cluster": {"name": "倒悬岩簇", "kind": "cave",
+		"rects": [[-60, 0, 40, 130], [10, 0, 34, 85], [-18, 105, 40, 45]]},
+}
+
+## 每潜布置计划：区域 / 形态 / 模板池 / 数量区间 / x区间 / 锚面y
+const TERRAIN_FEATURE_PLAN := [
+	{"zone": "A", "mode": "floor", "floor_y": 800.0, "kinds": ["dune_high", "rock_spire", "arch"],
+		"count": [2, 3], "x_range": [360.0, 1560.0]},
+	{"zone": "B", "mode": "floor", "floor_y": 950.0, "kinds": ["dune_high", "rock_spire", "arch"],
+		"count": [2, 3], "x_range": [1830.0, 2790.0]},
+	{"zone": "B", "mode": "floor", "floor_y": 950.0, "kinds": ["dune_low"],
+		"count": [1, 2], "x_range": [2870.0, 5000.0]},
+	{"zone": "C", "mode": "floor", "floor_y": 950.0, "kinds": ["dune_low"],
+		"count": [1, 2], "x_range": [3520.0, 5060.0]},
+	{"zone": "C", "mode": "hang", "floor_y": 520.0, "kinds": ["hang_cluster"],
+		"count": [1, 2], "x_range": [3620.0, 4980.0]},
+]
 
 
 ## ---- V0.4 海域主题：每次下潜抽取，决定出没的 Boss ----

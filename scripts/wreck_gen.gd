@@ -17,13 +17,33 @@ const PASS_BOX_SIZE := Vector2(28, 34)
 static func generate(rng: RandomNumberGenerator, chosen: Dictionary) -> Array:
 	var out: Array = []
 	for zone in ["B", "C"]:
-		var variant: Dictionary = chosen[zone]["variant"]
-		for anchor_cfg in variant.get("wreck_anchors", []):
-			if rng.randf() >= MapDataRes.WRECK_ANCHOR_CHANCE:
-				continue
-			var kind := _pick_kind(rng, anchor_cfg["kinds"])
-			out.append(_build(kind, zone, Vector2(anchor_cfg["x"], MapDataRes.WRECK_FLOOR_Y)))
+		var anchors: Array = chosen[zone]["variant"].get("wreck_anchors", [])
+		if anchors.is_empty():
+			continue
+		if rng.randf() >= MapDataRes.WRECK_ANCHOR_CHANCE:
+			continue
+		# 同一变体的多个锚点互斥：每潜至多一艘沉船占据该变体的锚位
+		var cfg: Dictionary = anchors[rng.randi_range(0, anchors.size() - 1)]
+		var kind := _pick_kind(rng, cfg["kinds"])
+		var wreck := _build_validated(rng, kind, zone, float(cfg["x"]), chosen)
+		if not wreck.is_empty():
+			out.append(wreck)
 	return out
+
+
+## 锚点左右小幅抖动增加位置随机性；抖动位置非法则回退原锚点（锚点本身已离线校验）。
+static func _build_validated(rng: RandomNumberGenerator, kind: String, zone: String,
+		base_x: float, chosen: Dictionary) -> Dictionary:
+	var solids: Array = MapDataRes.variant_solids(zone, chosen[zone]["index"])
+	var chest_spots: Array = chosen[zone]["variant"]["chests"]
+	var patrols: Array = chosen[zone]["variant"]["patrols"]
+	var offsets := [rng.randf_range(-50.0, 50.0), 0.0]
+	for off in offsets:
+		var anchor := Vector2(base_x + off, MapDataRes.WRECK_FLOOR_Y)
+		var wreck := _build(kind, zone, anchor)
+		if placement_ok(wreck["rects"], solids, chest_spots, patrols, wreck["interior"]):
+			return wreck
+	return {}
 
 
 static func _pick_kind(rng: RandomNumberGenerator, kinds: Array) -> String:
@@ -42,9 +62,12 @@ static func _pick_kind(rng: RandomNumberGenerator, kinds: Array) -> String:
 ## 沉船主题强制激活一个锚点（保证幽灵船长有触发点）；无可用锚点时返回空。
 static func force_one(rng: RandomNumberGenerator, chosen: Dictionary) -> Dictionary:
 	for zone in ["B", "C"]:
-		for anchor_cfg in chosen[zone]["variant"].get("wreck_anchors", []):
-			var kind := _pick_kind(rng, anchor_cfg["kinds"])
-			return _build(kind, zone, Vector2(anchor_cfg["x"], MapDataRes.WRECK_FLOOR_Y))
+		var anchors: Array = chosen[zone]["variant"].get("wreck_anchors", [])
+		if anchors.is_empty():
+			continue
+		var cfg: Dictionary = anchors[rng.randi_range(0, anchors.size() - 1)]
+		var kind := _pick_kind(rng, cfg["kinds"])
+		return _build_validated(rng, kind, zone, float(cfg["x"]), chosen)
 	return {}
 
 
