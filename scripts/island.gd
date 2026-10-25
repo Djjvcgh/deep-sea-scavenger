@@ -44,6 +44,9 @@ func _ready() -> void:
 	boat_panel = BoatPanelScene.instantiate()
 	add_child(boat_panel)
 	_panels = [merchant_panel, upgrades_panel, boat_panel]
+	# 面板以任何方式关闭（按钮/Esc/造船完成自动弹出后关闭）都恢复玩家移动。
+	for p in _panels:
+		p.closed.connect(_on_panel_closed)
 
 	_add_interactable("下潜点", Vector2(150, 520),
 		func() -> void: get_tree().change_scene_to_file("res://scenes/underwater.tscn"))
@@ -86,14 +89,16 @@ func _open_panel(panel: CanvasLayer) -> void:
 
 
 func _close_panels() -> bool:
-	var closed := false
+	var closed_any := false
 	for p in _panels:
 		if p.visible:
 			p.close()
-			closed = true
-	if closed:
-		player.control_locked = false
-	return closed
+			closed_any = true
+	return closed_any
+
+
+func _on_panel_closed() -> void:
+	player.control_locked = false
 
 
 func _on_boat_completed() -> void:

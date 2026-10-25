@@ -55,6 +55,21 @@ func _run() -> void:
 	_check(not island.merchant_panel.visible, "Esc 关闭商人界面")
 	_check(not paused, "关闭面板不暂停")
 
+	# 按钮路径关闭（界面上的「离开」按钮走同一 close()）：必须解除移动锁定
+	player.global_position = Vector2(560, 500)
+	await create_timer(0.3).timeout
+	await _tap("interact")
+	await create_timer(0.2).timeout
+	_check(player.control_locked, "面板打开时玩家锁定移动")
+	island.merchant_panel.close()
+	await create_timer(0.2).timeout
+	_check(not player.control_locked, "按钮关闭面板后解除移动锁定")
+	var x_before: float = player.global_position.x
+	Input.action_press("move_right")
+	await create_timer(0.4).timeout
+	Input.action_release("move_right")
+	_check(player.global_position.x > x_before + 10.0, "关闭面板后玩家可以移动")
+
 	# 出售与存档
 	var credits_before: int = gs.credits
 	gs.sell_one("bronze_coins")
@@ -86,6 +101,11 @@ func _run() -> void:
 	_check(island2._boat_visual.get_child_count() > 0, "船坞视觉随进度更新")
 	var has_save2 := FileAccess.file_exists("user://deepsea_scavenger_save.json")
 	_check(has_save2, "造船进度已存档")
+
+	# 造船面板的按钮关闭路径同样要解锁
+	island2.boat_panel.close()
+	await create_timer(0.2).timeout
+	_check(not island2.player.control_locked, "关闭造船面板后解除移动锁定")
 
 	# 清理
 	gs.reset_defaults()

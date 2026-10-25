@@ -3,6 +3,8 @@ extends CanvasLayer
 
 const ItemDBRes := preload("res://scripts/item_db.gd")
 
+signal closed
+
 var _progress_bar: ProgressBar
 var _progress_label: Label
 var _rows_box: VBoxContainer
@@ -66,6 +68,7 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+	closed.emit()
 
 
 func _refresh() -> void:
