@@ -285,6 +285,8 @@ func _process(delta: float) -> void:
 	var alive: bool = not player.dead and dive != null and not dive.ended
 	if alive and not dive.in_extraction and player.global_position.x > 700.0:
 		var ec: Vector2 = MapDataRes.EXTRACT_RECT.get_center()
+		if dive.has_method("extract_center"):
+			ec = dive.extract_center()
 		var dist: float = player.global_position.distance_to(ec)
 		var speed: float = BalanceRes.SWIM_SPEED * GameState.speed_mult() * GameState.weight_speed_mult()
 		var cost: float = dist / speed * BalanceRes.DRAIN_SWIM * GameState.weight_drain_mult()

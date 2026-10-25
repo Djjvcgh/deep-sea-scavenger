@@ -116,6 +116,8 @@ scripts/
   cave_gen.gd            洞穴种子化生成与合法性校验
   terrain_gen.gd         每潜地形模块（沙丘/岩塔/石拱/沙脊/倒悬岩簇）种子化生成
   dive_generator.gd      单次下潜统一生成管线（变体→沉船→洞穴→地形模块，场景与测试共用）
+  level_blacktide.gd     V0.5 黑潮号残骸独立测试关卡（手写地形/掉落/巡逻 + 调试键 + 存档保护）
+  level_switch.gd        黑潮号关卡机关交互点（航海日志/船尾神龛/应急绞盘）
   game_state.gd          全局状态（永久进度 + 遗落物缓存 + 单次下潜临时数据）
   save_manager.gd        JSON 存档（user://deepsea_scavenger_save.json，v2 格式，自动迁移 v1）
   sfx.gd                 音效管理
@@ -135,6 +137,22 @@ tests/                   自动化检查（见下）
 - 宝物与品质倍率、物资价格、容器与掉落池、沉船/洞穴掉落池、Boss 掉落、背包档位、升级、造船需求、区域权重：`scripts/item_db.gd`
 - 地图地形、宝箱点、鲨鱼巡逻区、沉船模板与锚点、洞穴模板、海域主题权重：`scripts/map_data.gd`
 - 存档内容结构（v2）与 v1 迁移：`scripts/game_state.gd` 的 `serialize()/apply_save()`
+
+## V0.5 开发中：黑潮号残骸（独立关卡测试）
+
+V0.5 第一阶段的手工灰盒关卡，主菜单「关卡测试：黑潮号残骸（V0.5）」直接进入，
+不影响正式游戏与存档（关卡内从不写盘，退出时全局状态原样还原）。
+
+- **双路线**：上层甲板（快，3 条鲨鱼巡逻 + 断桅/横桁掩体，瞭望舱可早接触高价值金杯）
+  vs 船底破口（安全绕远：前货舱普通宝箱 → 轮机舱 → 舱壁顶门 → 船长货舱）。
+- **船长货舱**：船长金库（完美六分仪 3 格 + 精良金杯 3 格，逼出背包取舍）+ 航海日志线索。
+- **隐藏密室**：船尾神龛后暗门（青色缝隙漏光 + 神龛蓝火双重视觉线索），藏独特遗物
+  「黑潮号船首像」（4 格，520 估值）。
+- **返航捷径**：船长货舱内摇动应急绞盘 → 同时打开龙骨活门与夹层坍塌，
+  龙骨夹层爬行道返航比原路更短且完全避开鲨鱼。
+- **调试键**（仅本关卡）：R 重置 · F1 循环背包档位 · F2 补满体力 · F3 清除/恢复鲨鱼 · F4 装卸鱼叉。
+- 关卡文件：`scenes/level_blacktide.tscn` + `scripts/level_blacktide.gd`（地形/掉落/巡逻全部手写），
+  机关交互点 `scripts/level_switch.gd`。
 
 ## 已实现功能
 
@@ -171,6 +189,8 @@ Godot_console.exe --headless -s res://tests/integration_island.gd # 荒岛端到
 Godot_console.exe --headless -s res://tests/integration_boss.gd   # 战斗端到端（猎鲨/巨影苏醒/触拍/击杀掉落/逃离潜回）
 Godot_console.exe --headless -s res://tests/integration_v04.gd    # V0.4 端到端（沉船容器/洞穴进出/鲨鱼遮挡/换气数值/船长与海蛇触发击杀）
 Godot_console.exe --headless -s res://tests/integration_menu.gd   # 主菜单（新游戏/继续）
+Godot_console.exe --headless -s res://tests/integration_blacktide.gd  # V0.5 黑潮号关卡（双路线/密室/捷径/结算/存档保护）
+Godot_console.exe -s res://tests/screenshot_blacktide.gd           # 黑潮号关卡截图（需窗口模式，输出 tests/shots/）
 Godot_console.exe --headless -s res://tests/playtest_bot.gd       # 机器人试玩（区域C满载往返/开阔水逃脱/被咬反应窗口）
 Godot_console.exe --headless -s res://tests/gen_icons.gd          # 重新生成物品图标（首次已生成，通常无需运行）
 ```
@@ -194,8 +214,10 @@ Godot_console.exe --headless -s res://tests/gen_icons.gd          # 重新生成
 
 ## 后续计划
 
-v0.4 已落地海域主题、随机沉船/洞穴、换气与三 Boss。候选议题（待讨论）：
+v0.5 第一阶段已落地黑潮号残骸灰盒关卡（双路线 / 密室 / 返航捷径 / 存档保护，见上文关卡测试节）。
+其余候选议题（待讨论）：
 
+- 黑潮号关卡奖励接入正式循环、灰盒美术替换、更多手工关卡
 - 更多沉船/洞穴模板与区域 D（深渊裂隙专属层）
 - Boss 击杀后的长期奖励线（主题专属解锁/材料）
 - 兵器升级（鱼叉射程/伤害档位、更多兵器类型）

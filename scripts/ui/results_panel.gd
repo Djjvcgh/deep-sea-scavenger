@@ -9,6 +9,10 @@ var _list_box: VBoxContainer
 var _total_label: Label
 var _back_btn: Button
 
+## 结束后的去向（独立测试关卡可改写，如重载自身）
+var return_scene := "res://scenes/island.tscn"
+var return_button_text := "返回荒岛"
+
 
 func _ready() -> void:
 	layer = 20
@@ -55,6 +59,7 @@ func _build() -> void:
 func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0,
 		seed_id := -1, fail_reason := "") -> void:
 	visible = true
+	_back_btn.text = return_button_text
 	for c in _list_box.get_children():
 		c.queue_free()
 	var time_text := ""
@@ -101,4 +106,4 @@ func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0,
 
 func _go_island() -> void:
 	get_tree().paused = false
-	get_tree().change_scene_to_file("res://scenes/island.tscn")
+	get_tree().change_scene_to_file(return_scene)

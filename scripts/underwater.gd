@@ -205,6 +205,11 @@ func get_zone_at(p: Vector2) -> String:
 	return WorldLayoutRes.zone_at(_layout, p)
 
 
+## HUD 返航预估使用的撤离点中心（独立关卡可覆写此接口）。
+func extract_center() -> Vector2:
+	return MapDataRes.EXTRACT_RECT.get_center()
+
+
 func get_zone_label() -> String:
 	if player == null or not is_instance_valid(player):
 		return ""

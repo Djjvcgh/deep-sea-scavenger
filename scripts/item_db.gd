@@ -64,6 +64,11 @@ const TREASURES := {
 		"name": "深海蛇珠", "value": 400, "slots": 3, "search_time": 5.5,
 		"color": Color(0.2, 0.7, 0.62), "rare": true,
 	},
+	# ---- V0.5 黑潮号残骸关卡：隐藏密室的独特遗物 ----
+	"figurehead_blacktide": {
+		"name": "黑潮号船首像", "value": 520, "slots": 4, "search_time": 6.0,
+		"color": Color(0.45, 0.88, 0.8), "rare": true,
+	},
 }
 
 ## 材料价格；leather 只能从海底获得也可回售/回购

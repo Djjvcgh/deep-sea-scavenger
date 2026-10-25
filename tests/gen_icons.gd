@@ -29,11 +29,12 @@ func _initialize() -> void:
 	_ritual_relic()
 	_cursed_relic()
 	_serpent_pearl()
+	_figurehead_blacktide()
 	_wood()
 	_iron()
 	_canvas()
 	_leather()
-	print("图标生成完成：%s（15 个）" % OUT_DIR)
+	print("图标生成完成：%s（16 个）" % OUT_DIR)
 	quit(0)
 
 
@@ -246,6 +247,30 @@ func _leather() -> void:
 		_line(img, Vector2(17, 27).lerp(Vector2(48, 26), t) + Vector2(0, 1),
 			Vector2(17, 27).lerp(Vector2(48, 26), t) + Vector2(0, 4), 1, Color(0.35, 0.22, 0.1))
 	_save(img, "leather")
+
+
+func _figurehead_blacktide() -> void:
+	var img := _new()
+	# 展翼造型：双翼 + 船首躯体 + 铆钉缘饰
+	_fill_poly(img, [Vector2(6, 40), Vector2(26, 24), Vector2(28, 34), Vector2(12, 46)], Color(0.55, 0.74, 0.72))
+	_fill_poly(img, [Vector2(58, 40), Vector2(38, 24), Vector2(36, 34), Vector2(52, 46)], Color(0.55, 0.74, 0.72))
+	_fill_poly(img, [Vector2(8, 42), Vector2(24, 29), Vector2(25, 34), Vector2(13, 44)], Color(0.72, 0.92, 0.88))
+	_fill_poly(img, [Vector2(56, 42), Vector2(40, 29), Vector2(39, 34), Vector2(51, 44)], Color(0.72, 0.92, 0.88))
+	# 船首躯体（深色船木）与金色缘饰
+	_fill_poly(img, [Vector2(22, 52), Vector2(42, 52), Vector2(46, 30), Vector2(32, 10), Vector2(18, 30)], OUTLINE)
+	_fill_poly(img, [Vector2(24, 50), Vector2(40, 50), Vector2(43, 30), Vector2(32, 13), Vector2(21, 30)], Color(0.36, 0.26, 0.16))
+	_fill_poly(img, [Vector2(24, 50), Vector2(32, 50), Vector2(32, 13), Vector2(21, 30)], Color(0.48, 0.35, 0.2))
+	_ring_arc(img, 32, 12, 5, 1.5, PI, TAU, GOLD_DARK)
+	# 胸口海蓝宝石
+	_fill_ellipse(img, 32, 34, 6, 8, Color(0.16, 0.5, 0.48))
+	_fill_ellipse(img, 32, 34, 4, 6, Color(0.45, 0.88, 0.8))
+	_fill_ellipse(img, 30, 31, 1.5, 2, Color(0.9, 1.0, 0.98))
+	# 底座缘饰与铆钉
+	_fill_rect(img, 20, 50, 24, 5, GOLD_DARK)
+	_fill_rect(img, 20, 50, 24, 2, GOLD)
+	for x in [24, 32, 40]:
+		_fill_ellipse(img, x, 52.5, 1.5, 1.5, GOLD)
+	_save(img, "figurehead_blacktide")
 
 
 # ---------------- 绘制基元 ----------------

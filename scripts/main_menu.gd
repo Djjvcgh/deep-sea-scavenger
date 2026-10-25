@@ -119,6 +119,10 @@ func _build_ui() -> void:
 	settings_btn.pressed.connect(_on_settings)
 	box.add_child(settings_btn)
 
+	var level_btn := UICommon.button("关卡测试：黑潮号残骸（V0.5）", 18)
+	level_btn.pressed.connect(_on_blacktide)
+	box.add_child(level_btn)
+
 	var quit_btn := UICommon.button("退出", 24)
 	quit_btn.pressed.connect(func() -> void: get_tree().quit())
 	box.add_child(quit_btn)
@@ -158,6 +162,12 @@ func _on_continue() -> void:
 	Sfx.play("click")
 	GameState.apply_save(SaveManager.load_game())
 	get_tree().change_scene_to_file("res://scenes/island.tscn")
+
+
+## V0.5 独立测试关卡：进入前不读写存档，关卡自身保护并还原现场。
+func _on_blacktide() -> void:
+	Sfx.play("click")
+	get_tree().change_scene_to_file("res://scenes/level_blacktide.tscn")
 
 
 func _on_settings() -> void:
