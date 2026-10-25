@@ -1,8 +1,11 @@
 extends SceneTree
 ## 黑潮号关卡截图工具（窗口模式运行，非 headless）：
 ##   Godot_console.exe -s res://tests/screenshot_blacktide.gd
-## 在关键位置捕获画面到 tests/shots/，供灰盒布局目视检查。
-## V0.5：新增样板房特写、HUD 特写与搜刮界面前后对比（旧 UI 从 tests/ui_before/ 加载）。
+## V0.5 纠偏阶段输出：
+##   tests/shots/01-09 常规视角（zoom 为 0 表示用玩家默认相机 1.5）
+##   tests/shots/zoom_1.3/1.5/1.7 相机缩放对比 → docs/art_direction/screens/zoom/
+##   10_ship_full 完整船体 / 11_explore 水下探索 / 12_loot_normal 普通搜刮 /
+##   13_loot_rare 传说演出（含大图展示卡）
 
 const OUT_DIR := "res://tests/shots"
 const SHOTS := [
@@ -12,17 +15,29 @@ const SHOTS := [
 	{"name": "04_crawl_secret", "pos": Vector2(2600, 950), "zoom": 0.55},
 	{"name": "05_hold_close", "pos": Vector2(3080, 950), "zoom": 1.15},
 	{"name": "06_hold_secret", "pos": Vector2(3210, 950), "zoom": 1.3},
+	{"name": "07_hud", "pos": Vector2(3090, 955), "zoom": 0.0},
 ]
-const DEMO_LOOT := [
+const ZOOM_SET := [1.3, 1.5, 1.7]
+const DEMO_NORMAL := [
+	{"id": "pearl", "quality": "worn"},
+	{"id": "old_coin", "quality": "standard"},
+	{"mat": "leather"},
+]
+const DEMO_RARE := [
 	{"id": "gold_sextant", "quality": "pristine"},
 	{"id": "gold_cup", "quality": "fine"},
-	{"id": "pearl", "quality": "worn"},
-	{"mat": "leather"},
 ]
 
 
 func _initialize() -> void:
 	_run()
+
+
+func _move(player: Node2D, cam: Camera2D, pos: Vector2, zoom: float) -> void:
+	player.global_position = pos
+	if zoom > 0.0:
+		cam.zoom = Vector2.ONE * zoom
+	cam.reset_smoothing()
 
 
 func _run() -> void:
@@ -36,49 +51,58 @@ func _run() -> void:
 	var cam: Camera2D = player.get_node("Camera2D")
 	cam.position_smoothing_enabled = false
 	for shot in SHOTS:
-		player.global_position = shot["pos"]
-		cam.zoom = Vector2.ONE * float(shot["zoom"])
-		cam.reset_smoothing()
+		_move(player, cam, shot["pos"], float(shot["zoom"]))
 		await process_frame
 		await process_frame
 		await RenderingServer.frame_post_draw
-		var img := root.get_texture().get_image()
-		img.save_png("%s/%s.png" % [OUT_DIR, shot["name"]])
-		print("已截图：%s.png" % shot["name"])
+		_shot(shot["name"])
 
-	# ---- HUD 特写：靠近船长金库，带上下文交互提示 ----
-	player.global_position = Vector2(3090, 955)
-	cam.zoom = Vector2.ONE
-	cam.reset_smoothing()
-	await create_timer(0.5).timeout
+	# ---- 相机缩放对比（船长货舱同一位置） ----
+	for z in ZOOM_SET:
+		_move(player, cam, Vector2(3080, 950), z)
+		await process_frame
+		await process_frame
+		await RenderingServer.frame_post_draw
+		_shot("zoom_%.1f" % z)
+
+	# ---- 完整船体（超远视角） ----
+	_move(player, cam, Vector2(2100, 700), 0.34)
+	await process_frame
+	await process_frame
 	await RenderingServer.frame_post_draw
-	_shot("07_hud")
+	_shot("10_ship_full")
 
-	# ---- 搜刮界面：旧版（改造前） ----
+	# ---- 正常水下探索（默认相机 1.5，玩家可见） ----
+	_move(player, cam, Vector2(1500, 900), 0.0)
+	await create_timer(0.4).timeout
+	await RenderingServer.frame_post_draw
+	_shot("11_explore")
+
+	# ---- 普通宝物搜刮 ----
+	var crate_chest = null
+	for n in get_nodes_in_group("interactables"):
+		if "container_kind" in n and n.container_name == "货舱木箱":
+			crate_chest = n
+			break
+	uw.loot_panel.open(DEMO_NORMAL, crate_chest)
+	await create_timer(0.4).timeout
+	await RenderingServer.frame_post_draw
+	_shot("12_loot_normal")
+	uw.loot_panel.close()
+
+	# ---- 稀有宝物搜刮（传说演出卡） ----
 	var vault = null
 	for n in get_nodes_in_group("interactables"):
 		if "container_kind" in n and n.container_name == "船长金库":
 			vault = n
 			break
-	uw.hud.visible = false
-	var old_hud = load("res://tests/ui_before/hud_old.gd").new()
-	uw.add_child(old_hud)
-	old_hud.setup(player, uw)
-	var old_panel = load("res://tests/ui_before/loot_panel_old.gd").new()
-	uw.add_child(old_panel)
-	old_panel.open(DEMO_LOOT, vault)
+	uw.loot_panel.open(DEMO_RARE, vault)
 	await create_timer(0.3).timeout
+	uw.loot_panel._try_take(0)   # 拾取完美六分仪 → 触发传说演出
+	await create_timer(0.35).timeout
 	await RenderingServer.frame_post_draw
-	_shot("08_ui_before")
-	old_panel.queue_free()
-	old_hud.queue_free()
-
-	# ---- 搜刮界面：新版（改造后） ----
-	uw.hud.visible = true
-	uw.loot_panel.open(DEMO_LOOT, vault)
-	await create_timer(0.3).timeout
-	await RenderingServer.frame_post_draw
-	_shot("09_ui_after")
+	_shot("13_loot_rare")
+	uw.loot_panel.close()
 
 	print("截图完成：%s" % OUT_DIR)
 	quit(0)

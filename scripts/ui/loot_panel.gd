@@ -15,6 +15,9 @@ var _scroll: ScrollContainer
 var _title_label: Label
 var _flash_label: Label
 var _pulse_panels: Array = []     # 高价值图标框（呼吸脉冲）
+var _legendary_queue: Array = []  # 待展示的传说条目
+var _legendary_card: Control = null
+var _legendary_t := 0.0
 
 
 func _ready() -> void:
@@ -23,13 +26,82 @@ func _ready() -> void:
 	_build()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# 高价值呼吸脉冲（在 _t 上叠加各自相位）
 	var t := Time.get_ticks_msec() / 1000.0
 	for i in _pulse_panels.size():
 		var p: PanelContainer = _pulse_panels[i]
 		p.modulate = Color.WHITE.lerp(Color(1.35, 1.2, 0.8),
 			0.5 + 0.5 * sin(t * 3.2 + i * 1.7))
+	# 传说演出：队列逐个展示，超时自动收起
+	if _legendary_card != null:
+		_legendary_t -= delta
+		if _legendary_t <= 0.0:
+			_dismiss_legendary()
+	elif not _legendary_queue.is_empty() and visible:
+		_show_legendary(_legendary_queue.pop_front())
+
+
+## 传说判定：稀有宝物且完美品质或估值 ≥300。
+func _is_legendary(info: Dictionary, entry: Dictionary) -> bool:
+	return bool(info.get("rare", false)) \
+		and (String(entry.get("quality", "")) == "pristine" \
+			or GameState.value_of(entry) >= 300)
+
+
+## 传说演出卡：大图标 + 名称 + 估值，1.2 秒后自动收起；任意点击/空格/回车跳过。
+func _show_legendary(entry: Dictionary) -> void:
+	var card := UICommon.wood_panel(0.96)
+	card.set_anchors_preset(Control.PRESET_CENTER)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.z_index = 5
+	add_child(card)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(box)
+	var ribbon := UICommon.label("— 传说级发现 —", 16, Color(0.98, 0.6, 0.15))
+	ribbon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(ribbon)
+	var icon := UICommon.item_icon(String(entry["id"]), 110)
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(icon)
+	var name_l := UICommon.label(String(entry["name"]), 26, UICommon.GOLD)
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(name_l)
+	var value_l := UICommon.label("估值 %d" % int(entry["value"]), 20, Color(1.0, 0.9, 0.55))
+	value_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(value_l)
+	var hint := UICommon.label("点击 / 空格 继续", 12, UICommon.DIM)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(hint)
+	card.scale = Vector2.ONE * 0.75
+	card.pivot_offset = card.size * 0.5
+	_legendary_card = card
+	_legendary_t = 1.2
+	var tw := create_tween()
+	tw.tween_property(card, "scale", Vector2.ONE, 0.18)\
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _dismiss_legendary() -> void:
+	if _legendary_card == null:
+		return
+	var card := _legendary_card
+	_legendary_card = null
+	var tw := create_tween()
+	tw.tween_property(card, "modulate:a", 0.0, 0.12)
+	tw.tween_callback(card.queue_free)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _legendary_card == null:
+		return
+	var skip: bool = (event is InputEventMouseButton and event.pressed) \
+		or (event is InputEventKey and event.pressed \
+			and (event as InputEventKey).keycode in [KEY_SPACE, KEY_ENTER])
+	if skip:
+		_dismiss_legendary()
 
 
 func _build() -> void:
@@ -38,16 +110,7 @@ func _build() -> void:
 	var popup := UICommon.popup_panel(520.0)
 	add_child(popup)
 	var panel: PanelContainer = popup.get_meta("panel")
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.07, 0.09, 0.12, 0.96)
-	sb.border_color = Color(0.3, 0.34, 0.4)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(8)
-	sb.content_margin_left = 16
-	sb.content_margin_right = 16
-	sb.content_margin_top = 12
-	sb.content_margin_bottom = 12
-	panel.add_theme_stylebox_override("panel", sb)
+	panel.add_theme_stylebox_override("panel", UICommon.wood_stylebox(0.97))
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
@@ -104,6 +167,8 @@ func close() -> void:
 		_container.restore_leftovers(leftovers)
 	_entries = []
 	_container = null
+	_legendary_queue.clear()
+	_dismiss_legendary()
 	visible = false
 	closed.emit()
 
@@ -142,6 +207,10 @@ func _try_take(index: int) -> bool:
 		return false
 	var info: Dictionary = ItemDBRes.TREASURES[entry["id"]]
 	Sfx.play("rare_pickup" if info["rare"] else "pickup")
+	if _is_legendary(info, entry):
+		_legendary_queue.append({
+			"id": entry["id"], "name": info["name"],
+			"value": GameState.value_of(entry)})
 	_entries.remove_at(index)
 	return true
 
@@ -216,13 +285,18 @@ func _build_row(index: int) -> Control:
 	hbox.add_theme_constant_override("separation", 10)
 	row.add_child(hbox)
 
-	# 图标（品质描边；高价值呼吸脉冲）
+	# 图标（品质描边；高价值呼吸脉冲；精良品质一次性亮光）
 	var icon: PanelContainer = UICommon.quality_icon(
 		String(entry["mat"] if mat_entry else entry["id"]),
 		q["color"] if not rare else UICommon.GOLD, 46)
 	hbox.add_child(icon)
 	if high_value:
 		_pulse_panels.append(icon)
+	elif not mat_entry and String(entry["quality"]) == "fine":
+		icon.modulate = Color(2.4, 2.4, 2.0)
+		var tw := create_tween()
+		tw.tween_interval(0.15)
+		tw.tween_property(icon, "modulate", Color.WHITE, 0.55)
 
 	# 名称 + 估值/占格
 	var mid := VBoxContainer.new()

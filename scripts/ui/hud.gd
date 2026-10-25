@@ -77,6 +77,12 @@ func _keycap(letter: String) -> PanelContainer:
 	return panel
 
 
+## 文字深色描边：保证亮水面上与暗舱内的对比度。
+func _outline_text(l: Label, width := 5) -> void:
+	l.add_theme_constant_override("outline_size", width)
+	l.add_theme_color_override("font_outline_color", Color(0.05, 0.08, 0.11, 0.92))
+
+
 func _build() -> void:
 	# 临界体力红晕（最底层，不拦截鼠标）
 	_vignette = ColorRect.new()
@@ -85,14 +91,27 @@ func _build() -> void:
 	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_vignette)
 
-	# 左上：生命（心形×3）+ 体力（闪电图标 + 条）
+	# 顶栏：左侧（生命/体力）与右侧（背包/估值）各一块木纹面板
+	var top := HBoxContainer.new()
+	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	top.offset_left = 10
+	top.offset_right = -10
+	top.offset_top = 8
+	top.add_theme_constant_override("separation", 12)
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(top)
+
+	var left_panel := UICommon.wood_panel(0.92)
+	left_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(left_panel)
 	var tl := VBoxContainer.new()
-	tl.position = Vector2(16, 12)
-	tl.add_theme_constant_override("separation", 7)
-	add_child(tl)
+	tl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tl.add_theme_constant_override("separation", 6)
+	left_panel.add_child(tl)
 
 	var hp_row := HBoxContainer.new()
 	hp_row.add_theme_constant_override("separation", 5)
+	hp_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tl.add_child(hp_row)
 	for i in 3:
 		var heart := _icon("hud_heart", 17)
@@ -101,6 +120,7 @@ func _build() -> void:
 
 	var stam_row := HBoxContainer.new()
 	stam_row.add_theme_constant_override("separation", 7)
+	stam_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tl.add_child(stam_row)
 	stam_row.add_child(_icon("hud_bolt", 15))
 	_stamina_bar = ProgressBar.new()
@@ -113,21 +133,30 @@ func _build() -> void:
 
 	# 换气提示（贴近海面时才出现）
 	_breath_label = UICommon.label("", 15, UICommon.GOOD)
+	_outline_text(_breath_label)
 	tl.add_child(_breath_label)
 
 	# 返航风险（仅体力不足时作为危险提示出现）
 	_return_label = UICommon.label("", 16, UICommon.DANGER)
+	_outline_text(_return_label)
 	tl.add_child(_return_label)
 
-	# 右上：背包占用 + 战利品估值
+	var top_spacer := Control.new()
+	top_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(top_spacer)
+
+	var right_panel := UICommon.wood_panel(0.92)
+	right_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(right_panel)
 	var tr := VBoxContainer.new()
-	tr.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	tr.position = Vector2(1284 - 210, 12)
-	tr.custom_minimum_size = Vector2(194, 0)
-	add_child(tr)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tr.add_theme_constant_override("separation", 3)
+	right_panel.add_child(tr)
 	var bag_row := HBoxContainer.new()
 	bag_row.add_theme_constant_override("separation", 7)
 	bag_row.alignment = BoxContainer.ALIGNMENT_END
+	bag_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tr.add_child(bag_row)
 	_bag_label = UICommon.label("0/8", 20)
 	bag_row.add_child(_bag_label)
@@ -135,6 +164,7 @@ func _build() -> void:
 	var value_row := HBoxContainer.new()
 	value_row.add_theme_constant_override("separation", 7)
 	value_row.alignment = BoxContainer.ALIGNMENT_END
+	value_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tr.add_child(value_row)
 	_value_label = UICommon.label("0", 20, UICommon.GOLD)
 	value_row.add_child(_value_label)
@@ -143,26 +173,32 @@ func _build() -> void:
 	_seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	tr.add_child(_seed_label)
 
-	# 顶部中央：撤离倒计时；区域名只在新进入区域时短暂显示
-	_time_label = UICommon.label("", 19, UICommon.DIM)
-	_time_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_time_label.anchor_left = 0.5
-	_time_label.anchor_right = 0.5
-	_time_label.offset_left = -150
-	_time_label.offset_right = 150
-	_time_label.offset_top = 12
-	_time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(_time_label)
+	# 顶部中央：撤离倒计时（沙漏 + 木纹小面板）；区域名只在新进入区域时短暂显示
+	var time_panel := UICommon.wood_panel(0.82)
+	time_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	time_panel.anchor_left = 0.5
+	time_panel.anchor_right = 0.5
+	time_panel.offset_top = 8
+	time_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(time_panel)
+	var time_row := HBoxContainer.new()
+	time_row.add_theme_constant_override("separation", 7)
+	time_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	time_panel.add_child(time_row)
+	time_row.add_child(_icon("hud_timer", 16))
+	_time_label = UICommon.label("", 18, UICommon.DIM)
+	time_row.add_child(_time_label)
 
-	_zone_label = UICommon.label("", 21, UICommon.CYAN)
+	_zone_label = UICommon.label("", 24, UICommon.CYAN)
 	_zone_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_zone_label.anchor_left = 0.5
 	_zone_label.anchor_right = 0.5
-	_zone_label.offset_left = -150
-	_zone_label.offset_right = 150
-	_zone_label.offset_top = 40
+	_zone_label.offset_left = -200
+	_zone_label.offset_right = 200
+	_zone_label.offset_top = 46
 	_zone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_zone_label.visible = false
+	_outline_text(_zone_label, 7)
 	add_child(_zone_label)
 
 	# 中央大警告（带警示三角图标，仅危险时出现）
@@ -178,6 +214,7 @@ func _build() -> void:
 	add_child(warn_row)
 	warn_row.add_child(_icon("hud_warn", 24))
 	_warning_label = UICommon.label("", 24, UICommon.DANGER)
+	_outline_text(_warning_label, 6)
 	warn_row.add_child(_warning_label)
 	warn_row.name = "WarnRow"
 	warn_row.visible = false
@@ -227,6 +264,7 @@ func _build() -> void:
 	_prompt_box.add_child(_prompt_key)
 	_prompt_label = UICommon.label("", 18)
 	_prompt_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_outline_text(_prompt_label)
 	_prompt_box.add_child(_prompt_label)
 
 	_search_bar = ProgressBar.new()
@@ -236,6 +274,7 @@ func _build() -> void:
 	bc.add_child(_search_bar)
 
 	_extract_label = UICommon.label("按 E 撤离，返回荒岛", 22, UICommon.GOLD)
+	_outline_text(_extract_label, 6)
 	_extract_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_extract_label.visible = false
 	bc.add_child(_extract_label)
@@ -402,6 +441,7 @@ func _show_warning(text: String, color: Color) -> void:
 func spawn_notice(text: String, color: Color) -> void:
 	var l := UICommon.label(text, 19, color)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_outline_text(l, 4)
 	_notice_box.add_child(l)
 	var tween := create_tween()
 	tween.tween_interval(0.9)

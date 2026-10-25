@@ -79,3 +79,28 @@ static func popup_panel(width: float) -> CenterContainer:
 	overlay_root.add_child(panel)
 	overlay_root.set_meta("panel", panel)
 	return overlay_root
+
+
+## V0.5 航海风木纹九宫格面板样式（HUD / 弹窗底板统一用）。
+## margin 为九宫格拉伸边距；透明度可调以保证背景文字可读。
+static func wood_stylebox(alpha := 0.94) -> StyleBoxTexture:
+	var tex := load("res://assets/scenery/blacktide/wood_panel.png") as Texture2D
+	var sb := StyleBoxTexture.new()
+	sb.texture = tex
+	sb.texture_margin_left = 8
+	sb.texture_margin_right = 8
+	sb.texture_margin_top = 8
+	sb.texture_margin_bottom = 8
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	sb.modulate_color = Color(1, 1, 1, alpha)
+	return sb
+
+
+## 带木纹底板的容器（HUD 聚簇 / 面板分区）。
+static func wood_panel(alpha := 0.94) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", wood_stylebox(alpha))
+	return panel

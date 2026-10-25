@@ -42,6 +42,10 @@ var _fin_b: Node2D
 var _leg_a: Node2D
 var _leg_b: Node2D
 
+## V0.5 纠偏：默认相机缩放。1.0 时角色过小、危险预判距离过剩；
+## 经 1.3/1.5/1.7 对比（见 docs/art_direction/screens/zoom/）取 1.5。
+const CAM_ZOOM := 1.5
+
 
 func _ready() -> void:
 	max_hp = BalanceRes.MAX_HP
@@ -50,6 +54,7 @@ func _ready() -> void:
 	stamina = max_stamina
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING if mode == Mode.SWIM \
 		else CharacterBody2D.MOTION_MODE_GROUNDED
+	camera.zoom = Vector2.ONE * CAM_ZOOM
 	_build_visual()
 	if mode == Mode.SWIM:
 		_add_dive_light()

@@ -110,11 +110,6 @@ const SHARK_PATROLS := [
 	[2660.0, 3000.0, 395.0],
 ]
 
-const KIND_COLORS := {
-	"rock": Color(0.34, 0.42, 0.52), "sand": Color(0.72, 0.64, 0.46),
-	"wreck": Color(0.42, 0.29, 0.16), "crate": Color(0.55, 0.4, 0.2),
-}
-
 var player: CharacterBody2D
 var hud: CanvasLayer
 var inventory_panel: CanvasLayer
@@ -145,6 +140,7 @@ var _bubbles: Array = []
 var _lantern_glow: Polygon2D
 var _secret_glint: Polygon2D
 var _gold_glints: Array = []
+var _room_glows: Array = []
 
 
 func _ready() -> void:
@@ -156,6 +152,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_terrain()
 	_build_doors()
+	_build_visual_world()
 	_build_hold_dressing()
 	_build_extraction()
 	_spawn_chests()
@@ -623,49 +620,312 @@ func _build_environment() -> void:
 
 
 func _build_terrain() -> void:
+	# V0.5 纠偏：碰撞体不再挂任何可见形状，视觉全部由 _build_visual_world() 铺装
 	var body := StaticBody2D.new()
 	body.name = "Terrain"
 	body.collision_layer = 1
 	body.collision_mask = 0
 	for r in SOLIDS:
 		var rect := Rect2(r[0], r[1], r[2], r[3])
-		var kind: String = r[4]
 		var cs := CollisionShape2D.new()
 		var shape := RectangleShape2D.new()
 		shape.size = rect.size
 		cs.shape = shape
 		cs.position = rect.get_center()
 		body.add_child(cs)
-		body.add_child(_solid_visual(rect, kind))
 	add_child(body)
-	_build_room_signs()
 
 
-func _solid_visual(rect: Rect2, kind: String) -> Node2D:
-	var node := Node2D.new()
+# ---------------- V0.5 纠偏：分层视觉世界 ----------------
+# 层级（后 → 前）：渐变海体(-20/-19) → 视差远景(ParallaxLayer -18/-17) →
+# 船体整体剪影(-2) → 结构铺装(z0) → 舱内背板(z0) → 船肋/梁(z1) →
+# 门窗机关(z1) → 货件道具(z2) → 粒子(z3) → 玩家(5) → 前景遮挡(6)。
+# 碰撞矩形（SOLIDS/DOOR_SPECS）不承载任何可见形状。
+
+func _hash01(a: int, b := 0) -> float:
+	return fposmod(sin(float(a * 127 + b * 311)) * 43758.5453, 1.0)
+
+
+func _build_visual_world() -> void:
+	_build_parallax()
+	_build_ship_silhouette()
+	_clad_all_solids()
+	_build_room_dressing()
+
+
+## 视差远景：远礁影 + Kenney 背景岩与海草（中景）。
+func _build_parallax() -> void:
+	var pb := ParallaxBackground.new()
+	pb.layer = -18
+	add_child(pb)
+
+	var far := ParallaxLayer.new()
+	far.motion_scale = Vector2(0.15, 0.1)
+	far.motion_mirroring = Vector2(1320, 0)
+	pb.add_child(far)
+	for i in 3:
+		var s := Sprite2D.new()
+		s.texture = load(SCN + "far_rock.png")
+		s.position = Vector2(i * 440 + 220, 985)
+		s.scale = Vector2.ONE * 2.0
+		s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		far.add_child(s)
+
+	var mid := ParallaxLayer.new()
+	mid.motion_scale = Vector2(0.45, 0.3)
+	mid.motion_mirroring = Vector2(1500, 0)
+	pb.add_child(mid)
+	var mid_tint := Color(0.5, 0.58, 0.66)
+	for cfg in [["background_rock_a", 140, 1010, 1.6], ["background_rock_b", 520, 1030, 1.4],
+			["background_seaweed_c", 800, 1020, 1.6], ["background_rock_a", 1080, 1005, 1.5],
+			["background_seaweed_g", 1300, 1025, 1.5], ["background_rock_b", 260, 980, 1.2],
+			["background_seaweed_e", 640, 990, 1.3]]:
+		var ms := Sprite2D.new()
+		ms.texture = load(SPR + String(cfg[0]) + ".png")
+		ms.position = Vector2(cfg[1], cfg[2])
+		ms.scale = Vector2.ONE * float(cfg[3])
+		ms.modulate = mid_tint
+		ms.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		mid.add_child(ms)
+
+
+## 船体整体剪影：从外部看是一艘破损风帆船的暗色体量（甲板下船身 + 龙骨带 + 外板条纹）。
+func _build_ship_silhouette() -> void:
+	var poly := Polygon2D.new()
+	poly.polygon = PackedVector2Array([
+		Vector2(878, 648), Vector2(905, 800), Vector2(955, 1000), Vector2(985, 1072),
+		Vector2(3075, 1072), Vector2(3150, 1030), Vector2(3230, 940),
+		Vector2(3302, 820), Vector2(3308, 640), Vector2(3270, 618), Vector2(908, 618)])
+	poly.color = Color("181009")
+	poly.z_index = -2
+	add_child(poly)
+	# 外板条纹（舷侧板列的明暗韵律）
+	for band in [[640, 0.55, 0.16], [760, 0.5, 0.22], [900, 0.45, 3.2]]:
+		var line := Line2D.new()
+		var y0: float = band[0]
+		var thick: float = band[1]
+		line.points = PackedVector2Array([
+			Vector2(895, y0 + float(band[2])), Vector2(1500, y0), Vector2(2400, y0 - 6),
+			Vector2(3060, y0), Vector2(3290, y0 - 70)])
+		line.width = thick * 8.0
+		line.default_color = Color("0E0906", 0.5)
+		line.z_index = -1
+		add_child(line)
+	# 龙骨带
+	var keel := Line2D.new()
+	keel.points = PackedVector2Array([
+		Vector2(985, 1072), Vector2(2000, 1078), Vector2(3075, 1072)])
+	keel.width = 14.0
+	keel.default_color = Color("0C0805")
+	keel.z_index = -1
+	add_child(keel)
+
+
+## 全部碰撞矩形铺装（不留任何可见纯色块）。
+func _clad_all_solids() -> void:
+	for i in SOLIDS.size():
+		var r: Array = SOLIDS[i]
+		var rect := Rect2(r[0], r[1], r[2], r[3])
+		match String(r[4]):
+			"sand":
+				_clad_sand(rect)
+			"rock":
+				_clad_rock(rect, i)
+			"wreck":
+				_clad_wood(rect)
+			"crate":
+				_clad_crate(rect, i)
+
+
+func _clad_wood(rect: Rect2) -> void:
+	_tile_walls(rect, Color(0.86, 0.82, 0.78), int(rect.position.x) % 5)
+
+
+## 甲板面与舱底额外铺 deck_plank（可行走面的专用板）。
+func _clad_deck_strip(x0: float, x1: float, y: float) -> void:
+	var x := x0
+	while x < x1:
+		_scn_sprite("deck_plank", Vector2(x + 96.0, y + 20.0), 0, 2.0, Color(0.95, 0.9, 0.82))
+		x += 192.0
+
+
+func _clad_sand(rect: Rect2) -> void:
+	var row := 0
+	var y := rect.position.y
+	while y < rect.end.y:
+		var dim := 1.0 - 0.09 * row
+		var x := rect.position.x
+		while x < rect.end.x:
+			_scn_sprite("sand_tile", Vector2(x + 96.0, y + 22.0), 0, 2.0,
+				Color(dim, dim, minf(1.0, dim + 0.02)))
+			x += 192.0
+		y += 44.0
+		row += 1
+
+
+func _clad_rock(rect: Rect2, idx: int) -> void:
+	# 石缝底色 + 巨石贴图网格覆盖
 	var fill := Polygon2D.new()
 	fill.polygon = PackedVector2Array([
 		rect.position, rect.position + Vector2(rect.size.x, 0),
 		rect.end, rect.position + Vector2(0, rect.size.y)])
-	fill.color = KIND_COLORS[kind]
-	node.add_child(fill)
-	# 顶边描线：灰盒可读性（地形轮廓清晰）
-	var edge := Line2D.new()
-	edge.points = PackedVector2Array([
-		rect.position, rect.position + Vector2(rect.size.x, 0)])
-	edge.width = 3.0
-	edge.default_color = KIND_COLORS[kind].lightened(0.35)
-	node.add_child(edge)
-	if kind == "wreck":
-		# 船壳板条纹理
-		for x in range(rect.position.x + 22.0, rect.end.x - 8.0, 46.0):
-			var seam := Line2D.new()
-			seam.points = PackedVector2Array([Vector2(x, rect.position.y + 2.0),
-				Vector2(x, rect.end.y - 2.0)])
-			seam.width = 2.0
-			seam.default_color = KIND_COLORS[kind].darkened(0.3)
-			node.add_child(seam)
-	return node
+	fill.color = Color("101B26")
+	fill.z_index = 0
+	add_child(fill)
+	var cy := rect.position.y
+	var jy := 0
+	while cy < rect.end.y:
+		var cx := rect.position.x
+		var jx := 0
+		while cx < rect.end.x:
+			var h1 := _hash01(idx, jx * 31 + jy)
+			var h2 := _hash01(idx + 7, jx + jy * 17)
+			var name := "rock_b" if h2 < 0.45 else "rock_a"
+			var s := _scn_sprite(name,
+				Vector2(cx + 74.0 + (h1 - 0.5) * 34.0, cy + 52.0 + (h2 - 0.5) * 22.0),
+				0, 2.0 + h1 * 0.7)
+			s.flip_h = h1 > 0.5
+			cx += 150.0
+			jx += 1
+		cy += 108.0
+		jy += 1
+
+
+func _clad_crate(rect: Rect2, idx: int) -> void:
+	_tile_walls(rect, Color(0.7, 0.62, 0.5), idx)
+	var cols := int(rect.size.x / 108.0)
+	var rows := int(rect.size.y / 92.0)
+	for iy in maxi(1, rows):
+		for ix in maxi(1, cols):
+			var h := _hash01(idx + 3, ix * 7 + iy)
+			var s := _scn_sprite("crate",
+				Vector2(rect.position.x + 54.0 + ix * 108.0 + (h - 0.5) * 10.0,
+					rect.position.y + 46.0 + iy * 92.0),
+				1, 1.9 + h * 0.25, Color(0.98, 0.94, 0.88), (h - 0.5) * 0.2)
+			s.flip_h = h > 0.5
+
+
+## 各舱室主题铺装：背板压暗 + 船肋 + 道具 + 灯光焦点 + 粒子。
+func _build_room_dressing() -> void:
+	# —— 前货舱：货件堆叠的日用舱 ——
+	_tile_walls(Rect2(960, 620, 1140, 410), Color(0.5, 0.53, 0.58), 11)
+	for i in 5:
+		_scn_sprite("hull_rib", Vector2(1030.0 + i * 200.0, 825), 1, 2.0, Color.WHITE,
+			[-0.04, 0.05, -0.03, 0.04, -0.05][i])
+	_scn_sprite("barrel", Vector2(1180, 1004), 2)
+	_scn_sprite("barrel_open", Vector2(1216, 1008), 2, 2.0, Color(1.0, 0.98, 0.94))
+	_scn_sprite("rope_coil", Vector2(2000, 1016), 2)
+	_scn_sprite("net", Vector2(1360, 655), 2)
+	_scn_sprite("lantern", Vector2(1560, 640), 2)
+	add_child(_add_glow(Vector2(1560, 648), 40.0, 22.0, Color(1.0, 0.72, 0.3, 0.14), 1))
+	_scn_sprite("porthole", Vector2(1750, 760), 1)
+	_scn_sprite("sediment_a", Vector2(1120, 1016), 1)
+	_scn_sprite("sediment_b", Vector2(1700, 1019), 1)
+	_scn_sprite("sediment_a", Vector2(1960, 1016), 1)
+	_scn_sprite("seaweed_hold", Vector2(985, 1004), 2)
+	_room_motes(Vector2(1530, 820), Vector2(520, 170), 22, Color(0.72, 0.85, 0.84, 0.35))
+
+	# —— 轮机舱：锅炉与管道的机舱 ——
+	_tile_walls(Rect2(2160, 620, 700, 410), Color(0.46, 0.5, 0.56), 23)
+	_scn_sprite("boiler", Vector2(2520, 940), 2, 3.2)
+	var fire_glow := _add_glow(Vector2(2520, 1000), 34.0, 20.0, Color(1.0, 0.5, 0.16, 0.2), 1)
+	add_child(fire_glow)
+	_room_glows.append({"node": fire_glow, "speed": 5.2, "phase": 0.0, "base": 0.16, "amp": 0.08})
+	_scn_sprite("pipe", Vector2(2712, 720), 2)
+	_scn_sprite("pipe", Vector2(2748, 760), 2, 1.5)
+	for i in 2:
+		_scn_sprite("hull_rib", Vector2(2210.0 + i * 590.0, 825), 1, 2.0, Color.WHITE,
+			0.04 if i == 0 else -0.05)
+	_scn_sprite("lantern", Vector2(2300, 640), 2)
+	add_child(_add_glow(Vector2(2300, 648), 36.0, 20.0, Color(1.0, 0.72, 0.3, 0.13), 1))
+	_scn_sprite("sediment_a", Vector2(2350, 1016), 1)
+	_scn_sprite("sediment_b", Vector2(2810, 1019), 1)
+	_scn_sprite("fishbone", Vector2(2650, 1022), 2)
+	_room_motes(Vector2(2500, 850), Vector2(320, 160), 16, Color(0.55, 0.58, 0.62, 0.3))
+
+	# —— 船尾舱：落口与杂物 ——
+	_tile_walls(Rect2(2920, 620, 320, 230), Color(0.52, 0.5, 0.54), 31)
+	_scn_sprite("door_frame", Vector2(2890, 660), 1, 2.0, Color.WHITE, PI / 2.0)
+	_scn_sprite("barrel", Vector2(3180, 824), 2)
+	_scn_sprite("crate", Vector2(3120, 830), 2, 1.8)
+	_scn_sprite("rope_coil", Vector2(2965, 836), 2)
+	_scn_sprite("porthole", Vector2(3000, 700), 1)
+	_scn_sprite("sediment_b", Vector2(3080, 839), 1)
+	_room_motes(Vector2(3080, 735), Vector2(150, 100), 10, Color(0.78, 0.88, 0.86, 0.32))
+
+	# —— 上层甲板：桅杆 / 横桁 / 栏杆 / 破口围板 ——
+	_clad_deck_strip(900.0, 1240.0, 560.0)
+	_clad_deck_strip(1400.0, 3050.0, 560.0)
+	_clad_deck_strip(3200.0, 3240.0, 560.0)
+	for span in [[950.0, 1230.0], [1410.0, 2260.0], [2300.0, 3030.0]]:
+		var x: float = span[0]
+		while x < span[1]:
+			_scn_sprite("railing", Vector2(minf(x + 96.0, span[1] - 96.0), 534), 1)
+			x += 192.0
+	_scn_sprite("mast", Vector2(2612, 438), 1)
+	_scn_sprite("spar", Vector2(2380, 479), 1)
+	_scn_sprite("spar", Vector2(1040, 505), 1, 1.2)
+	_scn_sprite("hull_bow", Vector2(938, 770), 0, 2.2)
+	_scn_sprite("hull_stern", Vector2(3272, 766), 0, 2.2)
+	for hx in [1250.0, 1390.0, 3060.0, 3190.0]:
+		_scn_sprite("hatch_coaming", Vector2(hx, 528), 1)
+	_scn_sprite("hull_rib", Vector2(1800, 500), 1, 1.4, Color(0.8, 0.78, 0.74), 0.5)
+	_scn_sprite("seaweed_hold", Vector2(1200, 548), 1, 1.6)
+	_scn_sprite("seaweed_hold", Vector2(2800, 548), 1, 1.6, Color(0.9, 0.95, 0.95))
+
+	# —— 瞭望舱（危险路线高价值点） ——
+	_scn_sprite("hatch_coaming", Vector2(1610, 428), 1)
+	_scn_sprite("hatch_coaming", Vector2(1690, 428), 1)
+	_scn_sprite("lantern", Vector2(1640, 430), 2)
+	add_child(_add_glow(Vector2(1640, 438), 34.0, 18.0, Color(1.0, 0.78, 0.35, 0.15), 1))
+
+	# —— 龙骨夹层：近黑爬行道 ——
+	_tile_walls(Rect2(960, 1070, 2280, 80), Color(0.34, 0.37, 0.42), 41)
+	for i in 8:
+		_scn_sprite("hull_rib", Vector2(1100.0 + i * 280.0, 1108), 1, 0.62,
+			Color(0.8, 0.8, 0.84), (i % 2) * 0.08 - 0.04)
+	_scn_sprite("fishbone", Vector2(1400, 1130), 2)
+	_scn_sprite("fishbone", Vector2(2400, 1135), 2, 1.4)
+	_scn_sprite("rope_hang", Vector2(1800, 1106), 1, 1.8)
+	_scn_sprite("sediment_b", Vector2(1300, 1141), 1, 2.0, Color(0.6, 0.62, 0.66))
+	_scn_sprite("sediment_b", Vector2(2700, 1141), 1, 2.0, Color(0.6, 0.62, 0.66))
+
+	# —— 密室：金堆与青绿火 ——
+	_tile_walls(Rect2(3300, 850, 260, 160), Color(0.42, 0.46, 0.5), 53)
+	_scn_sprite("hull_rib", Vector2(3345, 928), 1)
+	_scn_sprite("hull_rib", Vector2(3515, 928), 1, 2.0, Color.WHITE, 0.06)
+	_scn_sprite("gold_pile", Vector2(3470, 1000), 2)
+	_scn_sprite("gold_pile", Vector2(3390, 1004), 2, 1.4)
+	_scn_sprite("sediment_a", Vector2(3440, 1016), 1)
+	_room_motes(Vector2(3430, 930), Vector2(230, 130), 12, Color(0.5, 0.9, 0.84, 0.3))
+
+
+func _room_motes(pos: Vector2, extents: Vector2, amount: int, color: Color) -> void:
+	var motes := CPUParticles2D.new()
+	motes.position = pos
+	motes.z_index = 3
+	motes.emitting = true
+	motes.amount = amount
+	motes.lifetime = 6.0
+	motes.preprocess = 4.0
+	motes.texture = load(SCN + "mote.png")
+	motes.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	motes.scale_amount_min = 0.35
+	motes.scale_amount_max = 0.8
+	motes.color = color
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = extents
+	motes.direction = Vector2(0.12, -1)
+	motes.spread = 14
+	motes.initial_velocity_min = 2.0
+	motes.initial_velocity_max = 5.0
+	motes.gravity = Vector2(0, -1.2)
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+	ramp.colors = PackedColorArray([Color(color.r, color.g, color.b, 0.0), color,
+		Color(color.r, color.g, color.b, color.a * 0.7), Color(color.r, color.g, color.b, 0.0)])
+	motes.color_ramp = ramp
+	add_child(motes)
 
 
 # ---------------- 船长货舱样板房视觉层（V0.5） ----------------
@@ -706,8 +966,7 @@ func _tile_walls(rect: Rect2, tint: Color, seed := 0) -> void:
 
 
 func _build_hold_dressing() -> void:
-	# 房间块：外框正常亮度，室内背板压暗（Dead Cells 前后景分离）
-	_tile_walls(Rect2(2876, 846, 372, 228), Color(0.88, 0.84, 0.8), 3)
+	# 舱内背板压暗（Dead Cells 前后景分离；结构铺装由 _clad_all_solids 统一处理）
 	_tile_walls(Rect2(2918, 893, 324, 139), Color(0.5, 0.53, 0.6), 7)
 
 	# 船肋：间隔竖向结构（沉船内部的骨架韵律）
@@ -840,27 +1099,8 @@ func _build_hold_particles() -> void:
 
 
 ## 灰盒导视：入口与房间名（密室除外——秘密靠视觉线索）。
-func _build_room_signs() -> void:
-	_add_sign("船底破口 · 安全", Vector2(830, 845), UICommon.GOOD)
-	_add_sign("上层甲板 · 有鲨鱼", Vector2(700, 500), UICommon.ORANGE)
-	_add_sign("甲板破口", Vector2(1258, 528), UICommon.DIM)
-	_add_sign("桅杆断口", Vector2(3068, 528), UICommon.DIM)
-	_add_sign("前货舱", Vector2(1530, 668), UICommon.DIM)
-	_add_sign("轮机舱", Vector2(2510, 668), UICommon.DIM)
-	_add_sign("船尾舱", Vector2(3080, 660), UICommon.DIM)
-	_add_sign("龙骨夹层", Vector2(2050, 1112), UICommon.DIM)
-	_add_sign("黑潮号", Vector2(2100, 505), Color(0.72, 0.6, 0.42))
-
-
-func _add_sign(text: String, pos: Vector2, color: Color) -> void:
-	var label := UICommon.label(text, 17, color)
-	label.position = pos
-	label.z_index = 2
-	add_child(label)
-
-
 func _build_doors() -> void:
-	# 密室暗门：与船壁同色但带青色细缝漏光（不靠文字也能发现的视觉线索）
+	# 密室暗门：与船壁同板但带青色细缝漏光（不靠文字也能发现的视觉线索）
 	_doors["secret"] = _make_door(DOOR_SPECS["secret"], "secret")
 	_doors["gate"] = _make_door(DOOR_SPECS["gate"], "gate")
 	_doors["wedge"] = _make_door(DOOR_SPECS["wedge"], "wedge")
@@ -878,21 +1118,34 @@ func _make_door(spec: Array, key: String) -> StaticBody2D:
 	cs.shape = shape
 	cs.position = rect.get_center()
 	door.add_child(cs)
-	var fill := Polygon2D.new()
-	fill.polygon = PackedVector2Array([
-		rect.position, rect.position + Vector2(rect.size.x, 0),
-		rect.end, rect.position + Vector2(0, rect.size.y)])
-	fill.color = Color(0.5, 0.36, 0.2) if key != "wedge" else Color(0.4, 0.48, 0.56)
-	door.add_child(fill)
+	var spr := Sprite2D.new()
+	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	spr.position = rect.get_center() - door.global_position
+	match key:
+		"gate":
+			# 龙骨活门：金属格栅
+			spr.texture = load(SCN + "hatch_grate.png")
+			spr.scale = Vector2.ONE * 2.0
+		"wedge":
+			# 夹层坍塌：木板碎石堆积
+			spr.texture = load(SCN + "debris_pile.png")
+			spr.scale = Vector2.ONE * 2.0
+		"secret":
+			# 密室暗门：竖向船壳板伪装
+			spr.texture = load(SCN + "hull_wall_a.png")
+			spr.scale = Vector2(2.0, 2.6)
+			spr.rotation = PI / 2.0
+	door.add_child(spr)
 	if key == "secret":
 		var crack := Line2D.new()
 		crack.points = PackedVector2Array([
-			Vector2(rect.get_center().x, rect.position.y + 14.0),
-			Vector2(rect.get_center().x - 3.0, rect.get_center().y),
-			Vector2(rect.get_center().x, rect.end.y - 14.0)])
+			Vector2(0.0, -rect.size.y / 2.0 + 14.0),
+			Vector2(-3.0, 0.0),
+			Vector2(0.0, rect.size.y / 2.0 - 14.0)])
 		crack.width = 3.0
 		crack.default_color = Color(0.4, 0.95, 0.85, 0.8)
 		crack.name = "Crack"
+		crack.position = rect.get_center()
 		door.add_child(crack)
 	add_child(door)
 	return door
@@ -920,7 +1173,12 @@ func _build_extraction() -> void:
 	beam.color = Color(0.95, 0.78, 0.25, 0.14)
 	beam.z_index = -5
 	add_child(beam)
-	_add_sign("撤离点", EXTRACT_RECT.get_center() + Vector2(-30, -55), UICommon.GOLD)
+	# 撤离浮标：灯标 + 锚链垂到水面下，金光脉冲（代替文字标签）
+	_scn_sprite("buoy", EXTRACT_RECT.position + Vector2(50, -20), 2)
+	var buoy_glow := _add_glow(EXTRACT_RECT.position + Vector2(50, -36), 22.0, 14.0,
+		Color(0.98, 0.85, 0.4, 0.3), 2)
+	add_child(buoy_glow)
+	_room_glows.append({"node": buoy_glow, "speed": 2.2, "phase": 1.0, "base": 0.22, "amp": 0.14})
 
 
 func _on_extract_entered(body: Node2D) -> void:
@@ -974,13 +1232,18 @@ func _process(delta: float) -> void:
 
 	# 样板房光效：油灯暖光闪烁 / 暗门微光呼吸 / 散金闪光
 	if _lantern_glow != null:
-		_lantern_glow.color.a = 0.13 + 0.05 * (0.5 + 0.5 * sin(_t * 7.3)) \
-			+ 0.02 * (0.5 + 0.5 * sin(_t * 13.7))
+		_lantern_glow.color.a = 0.18 + 0.07 * (0.5 + 0.5 * sin(_t * 7.3)) \
+			+ 0.03 * (0.5 + 0.5 * sin(_t * 13.7))
 	if _secret_glint != null:
 		_secret_glint.color.a = 0.1 + 0.07 * (0.5 + 0.5 * sin(_t * 1.8))
 	for i in _gold_glints.size():
 		var g: Polygon2D = _gold_glints[i]
 		g.color.a = 0.35 + 0.45 * maxf(0.0, sin(_t * 2.2 + i * 2.1))
+	# 各舱室灯光焦点脉冲（锅炉炉火 / 浮标灯等）
+	for glow in _room_glows:
+		var node: Polygon2D = glow["node"]
+		node.color.a = float(glow["base"]) + float(glow["amp"]) \
+			* (0.5 + 0.5 * sin(_t * float(glow["speed"]) + float(glow["phase"])))
 
 	# 鲨鱼警觉时的紧张低音
 	var threat: bool = not ended and any_shark_alerting()

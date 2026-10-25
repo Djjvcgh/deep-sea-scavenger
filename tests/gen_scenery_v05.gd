@@ -67,6 +67,28 @@ func _initialize() -> void:
 	_hud_timer()
 	_hud_warn()
 	_palette()
+	# ---- 纠偏阶段：全船结构件 / 环境件 / UI 木纹面板 ----
+	_deck_plank()
+	_hull_bow()
+	_hull_stern()
+	_mast()
+	_spar()
+	_railing()
+	_hatch_coaming()
+	_door_frame()
+	_boiler()
+	_pipe()
+	_hatch_grate()
+	_debris_pile()
+	_rock(76, 56, "rock_a")
+	_rock(56, 42, "rock_b")
+	_sand_tile()
+	_buoy()
+	_gold_pile()
+	_fishbone()
+	_net()
+	_wood_panel()
+	_far_rock()
 	print("场景贴图生成完成：%s / %s" % [OUT, OUT_HUD])
 	quit(0)
 
@@ -764,3 +786,445 @@ func _palette() -> void:
 		for row in 3:
 			_rect(img, 8 + g * 76, 8 + row * 56, 60, 48, groups[g][row + 1])
 	img.save_png(ProjectSettings.globalize_path(OUT_PAL))
+
+
+# ==================== 纠偏阶段：全船与环境件 ====================
+
+## 甲板板面（平铺件）：纵向甲板板 + 捻缝 + 钉。
+func _deck_plank() -> void:
+	var img := _img(96, 20)
+	var r := _rng("deck_plank")
+	const ROW_H := 5
+	for row in 4:
+		var y0 := row * ROW_H
+		var shade := WOOD.lerp(WOOD_D, float(row) / 5.0)
+		_grain(img, r, shade, 0, y0, 96, ROW_H, 0.04)
+		for x in 96:
+			_px(img, x, y0, shade.darkened(0.4))
+			_px(img, x, y0 + 1, shade.lightened(0.12))
+		var joint := (row * 11 + 5) % 17
+		while joint < 96:
+			for yy in ROW_H:
+				_px(img, joint, y0 + yy, shade.darkened(0.3))
+			_px(img, joint + 1, y0 + 2, DARK)
+			joint += 17
+	for x in 96:
+		_px(img, x, 0, WOOD_L)
+		_px(img, x, 19, WOOD_DD)
+	_save(img, "deck_plank")
+
+
+## 船首柱：前倾龙骨柱 + 汇入的外板。
+func _hull_bow() -> void:
+	var img := _img(52, 70)
+	var r := _rng("hull_bow")
+	for i in 5:
+		var y := 6 + i * 13
+		var col := WOOD.lerp(WOOD_D, float(i) / 5.0)
+		for t in 30:
+			var px0 := int(lerpf(2.0, 26.0, t / 29.0))
+			var py := int(y + (t / 29.0) * 10.0)
+			_px(img, px0, py, _jit(col, r))
+			_px(img, px0, py + 1, col.darkened(0.25))
+			_px(img, px0 + 1, py, col.lightened(0.1))
+	for y in 66:
+		var lean := int(y * 0.12)
+		_rect(img, 26 + lean, y, 5, 1, WOOD_D)
+		_px(img, 26 + lean, y, WOOD_L)
+	_rect(img, 24, 0, 9, 4, WOOD_LL)
+	_barnacles(img, r, 30, 58, 5)
+	for i in 4:
+		_px(img, 8 + r.randi_range(0, 20), 10 + i * 14, NIGHT)
+	_outline(img)
+	_save(img, "hull_bow")
+
+
+## 船尾：横木板 + 双扇琥珀舷窗。
+func _hull_stern() -> void:
+	var img := _img(60, 76)
+	var r := _rng("hull_stern")
+	for row in 9:
+		var y := 8 + row * 7
+		var inset := maxi(0, (4 - row) * 2) if row < 5 else 0
+		var w := 56 - inset * 2
+		var shade := WOOD.lerp(WOOD_D, float(row) / 10.0)
+		_grain(img, r, shade, 2 + inset, y, w, 6, 0.03)
+		for x in w:
+			_px(img, 2 + inset + x, y, shade.darkened(0.35))
+	_rect(img, 0, 2, 60, 5, WOOD_L)
+	for x in 60:
+		_px(img, x, 6, WOOD_DD)
+	for wx in [12, 36]:
+		_rect(img, wx, 16, 12, 14, METAL)
+		_rect(img, wx + 2, 18, 8, 10, GOLD)
+		_rect(img, wx + 3, 19, 4, 4, GOLD_L)
+		_px(img, wx, 16, METAL_L)
+		_px(img, wx + 11, 29, DARK)
+	_barnacles(img, r, 8, 66, 5)
+	_barnacles(img, r, 48, 60, 4)
+	_outline(img)
+	_save(img, "hull_stern")
+
+
+## 断桅：立柱 + 绳箍 + 顶端断口。
+func _mast() -> void:
+	var img := _img(24, 128)
+	var r := _rng("mast")
+	_grain(img, r, WOOD_D, 6, 4, 12, 120, 0.05)
+	for y in 120:
+		_px(img, 6, y + 4, WOOD_L)
+		_px(img, 17, y + 4, WOOD_DD)
+	for wy in [30, 88]:
+		for x in 16:
+			_px(img, x + 4, wy, Color("5C4428") if x % 3 else Color("8A6B45"))
+			_px(img, x + 4, wy + 1, Color("8A6B45") if x % 3 else Color("5C4428"))
+	var jag: Array = [0, 4, 1, 5, 2, 6, 1, 3]
+	for x in 18:
+		var end_y := 2 + int(jag[x % jag.size()])
+		for y in range(end_y, 8):
+			_px(img, x + 3, y, Color(0, 0, 0, 0))
+		if x % 2 == 0:
+			_px(img, x + 3, end_y, WOOD_L)
+	_grain(img, r, WOOD_DD, 4, 124, 16, 4, 0.03)
+	_barnacles(img, r, 18, 110, 4)
+	_outline(img)
+	_save(img, "mast")
+
+
+## 横桁（桅杆帆桁）。
+func _spar() -> void:
+	var img := _img(128, 12)
+	var r := _rng("spar")
+	_grain(img, r, WOOD_L, 2, 2, 124, 8, 0.05)
+	for x in 124:
+		_px(img, x + 2, 2, WOOD_LL)
+		_px(img, x + 2, 9, WOOD_D)
+	for x in 8:
+		_px(img, 58 + x, 1, Color("5C4428"))
+		_px(img, 58 + x, 10, Color("8A6B45"))
+	_rect(img, 0, 3, 3, 6, WOOD_D)
+	_rect(img, 125, 3, 3, 6, WOOD_D)
+	_outline(img)
+	_save(img, "spar")
+
+
+## 甲板栏杆：立柱 + 垂绳。
+func _railing() -> void:
+	var img := _img(96, 28)
+	var r := _rng("railing")
+	_grain(img, r, WOOD_L, 2, 2, 92, 4, 0.03)
+	for x in 92:
+		_px(img, x + 2, 5, WOOD_DD)
+	for post_x in [6, 46, 86]:
+		_rect(img, post_x, 4, 5, 22, WOOD_D)
+		_px(img, post_x, 4, WOOD_L)
+		_px(img, post_x + 4, 25, DARK)
+	for seg in [[9, 45], [49, 85]]:
+		for t in 36:
+			var x: int = int(seg[0]) + t
+			var sag := int(round(sin(PI * float(t) / 35.0) * 5.0))
+			_px(img, x, 8 + sag, Color("8A6B45") if t % 2 else Color("5C4428"))
+	_outline(img)
+	_save(img, "railing")
+
+
+## 舱口围板（甲板破口边缘的框架）。
+func _hatch_coaming() -> void:
+	var img := _img(72, 18)
+	var r := _rng("hatch_coaming")
+	_grain(img, r, WOOD_D, 2, 8, 68, 8, 0.04)
+	for x in 68:
+		_px(img, x + 2, 8, WOOD)
+		_px(img, x + 2, 15, WOOD_DD)
+	for post_x in [2, 64]:
+		_rect(img, post_x, 2, 6, 14, WOOD)
+		_px(img, post_x, 2, WOOD_L)
+		_px(img, post_x + 1, 9, DARK)
+		_px(img, post_x + 4, 9, DARK)
+	_barnacles(img, r, 20, 12, 3)
+	_outline(img)
+	_save(img, "hatch_coaming")
+
+
+## 舱门框（低门/顶门通道的木框）。
+func _door_frame() -> void:
+	var img := _img(52, 46)
+	var r := _rng("door_frame")
+	for post_x in [2, 42]:
+		_rect(img, post_x, 4, 8, 40, WOOD_D)
+		_rect(img, post_x + 1, 4, 2, 40, WOOD)
+		_px(img, post_x + 2, 12, DARK)
+		_px(img, post_x + 6, 12, DARK)
+		_px(img, post_x + 2, 32, DARK)
+		_px(img, post_x + 6, 32, DARK)
+	_grain(img, r, WOOD, 2, 2, 48, 6, 0.03)
+	for x in 48:
+		_px(img, x + 2, 2, WOOD_L)
+	for x in 40:
+		_px(img, x + 6, 44, WOOD_DD if x % 3 else WOOD_D)
+	_outline(img)
+	_save(img, "door_frame")
+
+
+## 轮机舱锅炉：铆钉钢筒 + 炉门微光。
+func _boiler() -> void:
+	var img := _img(48, 44)
+	var r := _rng("boiler")
+	_grain(img, r, METAL, 4, 8, 40, 30, 0.03)
+	for y in 30:
+		_px(img, 7, y + 8, METAL_L)
+		_px(img, 8, y + 8, METAL_L.darkened(0.1))
+		_px(img, 42, y + 8, METAL.darkened(0.3))
+	for row in 4:
+		var inset := 4 + row * 3
+		_rect(img, inset, 5 + row, 48 - inset * 2, 1, METAL.lerp(METAL_L, 0.3 - row * 0.06))
+	for y in range(12, 36, 6):
+		for x in [10, 20, 30, 38]:
+			_px(img, x, y, METAL_L)
+			_px(img, x, y + 1, DARK)
+	_rect(img, 16, 22, 16, 13, Color("1E2226"))
+	_rect(img, 17, 23, 14, 11, NIGHT)
+	_rect(img, 19, 26, 10, 6, Color("B3541E"))
+	_rect(img, 21, 28, 6, 3, Color("F2A24D"))
+	_px(img, 18, 22, GOLD_D)
+	_px(img, 33, 22, GOLD_D)
+	_rect(img, 36, 0, 5, 6, METAL)
+	_px(img, 36, 0, METAL_L)
+	_rect(img, 2, 38, 44, 4, METAL.darkened(0.35))
+	_barnacles(img, r, 6, 34, 3)
+	_outline(img)
+	_save(img, "boiler")
+
+
+## 立管（带法兰与锈迹）。
+func _pipe() -> void:
+	var img := _img(14, 72)
+	var r := _rng("pipe")
+	_grain(img, r, METAL, 4, 2, 6, 68, 0.02)
+	for y in 68:
+		_px(img, 5, y + 2, METAL_L)
+		_px(img, 9, y + 2, METAL.darkened(0.35))
+	for fy in [4, 34, 64]:
+		_rect(img, 2, fy, 10, 4, METAL_L)
+		_rect(img, 2, fy + 3, 10, 1, METAL.darkened(0.3))
+		_px(img, 3, fy + 1, DARK)
+		_px(img, 10, fy + 1, DARK)
+	for i in 6:
+		var ry := 8 + r.randi_range(0, 54)
+		_px(img, 8, ry, Color("6B4A2A"))
+		_px(img, 8, ry + 1, Color("6B4A2A").darkened(0.2))
+	_outline(img)
+	_save(img, "pipe")
+
+
+## 金属格栅（龙骨活门）。
+func _hatch_grate() -> void:
+	var img := _img(60, 22)
+	_rect(img, 1, 1, 58, 20, METAL)
+	_rect(img, 3, 3, 54, 16, NIGHT)
+	for x in range(6, 54, 7):
+		_rect(img, x, 3, 3, 16, METAL)
+		_px(img, x, 3, METAL_L)
+	for t in 52:
+		_px(img, 4 + t, 18 - int(t * 0.28), Color("4A515A"))
+	_rect(img, 8, 0, 6, 3, METAL_L)
+	_rect(img, 46, 0, 6, 3, METAL_L)
+	_outline(img)
+	_save(img, "hatch_grate")
+
+
+## 坍塌堆积（木板 + 碎石交错）。
+func _debris_pile() -> void:
+	var img := _img(136, 44)
+	var r := _rng("debris")
+	for y in range(14, 42):
+		var half := int(64 * (float(y - 12) / 30.0))
+		for x in range(68 - half, 68 + half):
+			_px(img, x, y, _jit(SILT.lerp(SILT_D, float(y) / 44.0), r, 0.05))
+	for plank in [[20, 36, -0.5], [46, 40, 0.3], [78, 38, -0.2], [104, 34, 0.55]]:
+		var bx: int = plank[0]
+		var by: int = plank[1]
+		var slope: float = plank[2]
+		for t in 26:
+			var px0 := bx + t
+			var py := by - int(absf(t * slope))
+			_px(img, px0, py, WOOD if t % 7 else WOOD_D)
+			_px(img, px0, py + 1, WOOD_D)
+	for t in 14:
+		_px(img, 58 + t, 26 - int(sin(PI * t / 13.0) * 6), METAL)
+	_barnacles(img, r, 30, 38, 5)
+	_outline(img)
+	_save(img, "debris_pile")
+
+
+## 礁岩（带层理与藤壶的巨石）。
+func _rock(w: int, h: int, name: String) -> void:
+	var img := _img(w + 2, h + 2)
+	var r := _rng(name)
+	for y in h:
+		var t := float(y) / float(h)
+		var half := int(round(float(w) / 2.0 * pow(0.15 + 0.85 * t, 0.7)))
+		for x in range(w / 2 - half, w / 2 + half):
+			var shade := SILT.lerp(SILT_D, t * 0.8)
+			shade = shade.lerp(SILT_L, maxf(0.0, 0.35 - absf(float(x) / float(w) - 0.3) - t * 0.3))
+			_px(img, x + 1, y + 1, _jit(shade, r, 0.05))
+	for crack in 3:
+		var cx := 6 + r.randi_range(0, w - 14)
+		var cy := 4 + r.randi_range(0, h / 3)
+		for t in r.randi_range(10, h - 6):
+			_px(img, cx + r.randi_range(-1, 2), cy + t, SILT_D.darkened(0.3))
+	for x in w:
+		if img.get_pixel(x + 1, 2).a > 0.5:
+			_px(img, x + 1, 1, SILT_L)
+			_px(img, x + 1, h, Color("1A2734"))
+	_barnacles(img, r, w / 2 - 8, h / 3, 5)
+	_barnacles(img, r, w / 2 + 6, h - 8, 3)
+	_outline(img, Color("141E28"))
+	_save(img, name)
+
+
+## 海床条（沙与淤积，平铺件）。
+func _sand_tile() -> void:
+	var img := _img(96, 22)
+	var r := _rng("sand_tile")
+	var sand := Color("8A7C5E")
+	for y in 22:
+		var t := float(y) / 22.0
+		var base := sand.lerp(Color("4A4234"), t)
+		for x in 96:
+			_px(img, x, y, _jit(base, r, 0.04))
+	for x in 96:
+		_px(img, x, 0, Color("A3936E"))
+		_px(img, x, 1, sand.lightened(0.08))
+	for i in 7:
+		var sx := r.randi_range(2, 92)
+		var sy := r.randi_range(3, 16)
+		_px(img, sx, sy, Color("C9C2AC"))
+		_px(img, sx + 1, sy, sand.darkened(0.2))
+	for i in 4:
+		var peb := r.randi_range(4, 90)
+		_rect(img, peb, r.randi_range(6, 14), 2, 1, SILT)
+	_save(img, "sand_tile")
+
+
+## 撤离浮标：灯 + 浮体 + 锚链。
+func _buoy() -> void:
+	var img := _img(20, 30)
+	_rect(img, 7, 2, 6, 5, GOLD_D)
+	_rect(img, 8, 3, 4, 3, GOLD_L)
+	_px(img, 9, 1, GOLD)
+	_rect(img, 4, 8, 12, 10, RED)
+	_rect(img, 4, 11, 12, 2, RED_L)
+	_rect(img, 4, 15, 12, 2, Color("8A2420"))
+	_px(img, 4, 8, Color("E88A80"))
+	for y in range(19, 28, 2):
+		_rect(img, 9, y, 2, 1, METAL)
+	_outline(img)
+	_save(img, "buoy")
+
+
+## 金币堆。
+func _gold_pile() -> void:
+	var img := _img(44, 20)
+	var r := _rng("gold_pile")
+	for y in range(8, 18):
+		var half := int(20 * (float(y - 6) / 12.0))
+		for x in range(22 - half, 22 + half):
+			_px(img, x, y, _jit(GOLD_D, r, 0.06))
+	for i in 14:
+		var cx := 8 + r.randi_range(0, 28)
+		var cy := 9 + r.randi_range(0, 8)
+		_px(img, cx, cy, GOLD)
+		_px(img, cx + 1, cy, GOLD_D.darkened(0.15))
+		if i % 4 == 0:
+			_px(img, cx, cy - 1, GOLD_L)
+	_px(img, 12, 8, Color.WHITE)
+	_px(img, 30, 10, Color.WHITE)
+	_outline(img, GOLD_D.darkened(0.5))
+	_save(img, "gold_pile")
+
+
+## 鱼骨（龙骨夹层的死亡暗示）。
+func _fishbone() -> void:
+	var img := _img(32, 16)
+	var bone := Color("E8E4D0")
+	var bone_d := Color("B8B4A0")
+	for x in range(4, 28):
+		_px(img, x, 8, bone)
+		if x % 3 == 0:
+			_px(img, x, 7, bone_d)
+			_px(img, x, 9, bone_d)
+	for i in 7:
+		var bx := 8 + i * 3
+		for t in 6:
+			_px(img, bx, 8 - t, bone if t % 2 else bone_d)
+			_px(img, bx + 1, 8 - t + 1, bone_d)
+	_rect(img, 26, 6, 5, 5, bone)
+	_px(img, 28, 8, DARK)
+	_px(img, 30, 8, DARK)
+	_outline(img, Color("6E6A58"))
+	_save(img, "fishbone")
+
+
+## 垂挂渔网。
+func _net() -> void:
+	var img := _img(44, 34)
+	var rope := Color("8A6B45")
+	var rope_d := Color("5C4428")
+	for t in 44:
+		_px(img, t, int(t * 0.8), rope_d if t % 3 else rope)
+		_px(img, 43 - t, int(t * 0.8), rope if t % 3 else rope_d)
+		if t < 22:
+			_px(img, 2 + t * 2 - 22, 18 + int(t * 0.7), rope_d)
+	for x in 44:
+		if x % 2 == 0:
+			_px(img, x, 0, rope)
+	for y in range(22, 32):
+		for x in range(24, 40):
+			_px(img, x, y, Color(0, 0, 0, 0))
+	_rect(img, 6, 30, 3, 3, METAL)
+	_rect(img, 18, 31, 3, 3, METAL)
+	_outline(img, Color("3E3324"))
+	_save(img, "net")
+
+
+## UI 九宫格木纹面板（HUD/弹窗底板）。
+func _wood_panel() -> void:
+	var img := _img(36, 36)
+	var r := _rng("wood_panel")
+	var base := Color("241A10")
+	for y in 36:
+		var shade := base.lerp(Color("2E2115"), float(y % 12) / 12.0)
+		for x in 36:
+			_px(img, x, y, _jit(shade, r, 0.03))
+	for y in range(5, 36, 12):
+		for x in 36:
+			_px(img, x, y, Color("1A120A"))
+	for i in 36:
+		_px(img, i, 0, Color("3A2E1E"))
+		_px(img, i, 35, Color("1C150C"))
+		_px(img, 0, i, Color("3A2E1E"))
+		_px(img, 35, i, Color("1C150C"))
+	for c in [[3, 3], [31, 3], [3, 31], [31, 31]]:
+		_px(img, c[0], c[1], GOLD_D)
+		_px(img, c[0] + 1, c[1], Color("8A6538"))
+	_save(img, "wood_panel")
+
+
+## 远景礁影（视差层用，平铺件）。
+func _far_rock() -> void:
+	var img := _img(220, 90)
+	var r := _rng("far_rock")
+	var col := Color("14222F")
+	var col_l := Color("1B2E3E")
+	for hump in [[10, 54, 60], [80, 40, 78], [160, 58, 52]]:
+		var hx: int = hump[0]
+		var hy: int = hump[1]
+		var hw: int = hump[2]
+		for t in hw:
+			var hh := int(hy * sin(PI * float(t) / float(hw - 1)))
+			for y in hh:
+				_px(img, hx + t, 88 - y, col if y % 7 else col_l)
+	for i in 6:
+		_px(img, r.randi_range(4, 214), r.randi_range(10, 50), Color("24404F"))
+	_save(img, "far_rock")
