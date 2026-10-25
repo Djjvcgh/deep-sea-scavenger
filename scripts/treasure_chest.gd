@@ -10,6 +10,7 @@ var search_progress := 0.0
 var search_total := 1.5
 
 var _glow: Polygon2D
+var _core_glow: Polygon2D
 var _lid: Node2D
 var _box: Polygon2D
 var _t := randf() * TAU
@@ -61,6 +62,8 @@ func mark_looted() -> void:
 	looted = true
 	search_progress = 0.0
 	_glow.visible = false
+	if _core_glow != null:
+		_core_glow.visible = false
 	_lid.rotation = -1.0
 	_box.color = Color(0.28, 0.2, 0.13)
 
@@ -70,6 +73,8 @@ func _process(delta: float) -> void:
 		return
 	_t += delta
 	_glow.modulate.a = 0.55 + 0.35 * sin(_t * 3.0)
+	if _core_glow != null:
+		_core_glow.modulate.a = 0.5 + 0.4 * sin(_t * 5.0)
 
 
 func _build() -> void:
@@ -85,11 +90,28 @@ func _build() -> void:
 	cs.shape = shape
 	add_child(cs)
 
+	# 光晕按宝物稀有度分层：玩家远远就能判断"值不值得冒险"
+	var info: Dictionary = ItemDBRes.TREASURES[treasure_id]
 	_glow = Polygon2D.new()
-	_glow.polygon = _ellipse(30.0, 14.0)
+	var glow_rx := 38.0 if info["rare"] else 26.0
+	var glow_ry := 16.0 if info["rare"] else 12.0
+	_glow.polygon = _ellipse(glow_rx, glow_ry)
 	_glow.position = Vector2(0, 8)
-	_glow.color = Color(0.95, 0.78, 0.25, 0.6)
+	_glow.color = Color(info["color"], 0.65)
 	add_child(_glow)
+
+	if info["rare"]:
+		# 稀有宝箱中心亮核 + 纵向光柱，隔半个屏幕也能看到
+		_core_glow = Polygon2D.new()
+		_core_glow.polygon = _ellipse(12.0, 6.0)
+		_core_glow.position = Vector2(0, 6)
+		_core_glow.color = Color(1, 1, 0.9, 0.8)
+		add_child(_core_glow)
+		var beam := Polygon2D.new()
+		beam.polygon = PackedVector2Array([
+			Vector2(-7, -10), Vector2(7, -10), Vector2(13, -150), Vector2(-13, -150)])
+		beam.color = Color(info["color"], 0.16)
+		add_child(beam)
 
 	_box = Polygon2D.new()
 	_box.polygon = PackedVector2Array([

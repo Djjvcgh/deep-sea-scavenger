@@ -36,6 +36,14 @@ func _initialize() -> void:
 	_write("exhaust.wav", _mix([
 		[_tone(220.0, 0.12, 0.32, "square", 0.005, 0.04), 0.0],
 		[_tone(220.0, 0.12, 0.32, "square", 0.005, 0.04), 0.2]]))
+	_write("heartbeat.wav", _mix([
+		[_tone(62.0, 0.1, 0.6), 0.0],
+		[_tone(58.0, 0.12, 0.5), 0.17]]))
+	# 紧张低音：频率取整周期数保证 4 秒循环无缝
+	_write("tension.wav", _mix([
+		[_wobble_sine(55.0, 4.0, 0.22), 0.0],
+		[_wobble_sine(55.75, 4.0, 0.2), 0.0],
+		[_tone(110.0, 4.0, 0.06, "saw", 0.5, 0.5), 0.0]]))
 	_write("ambient_underwater.wav", _mix([
 		[_ambient_base(4.0, 0.05, 0.22), 0.0],
 		[_wobble_sine(58.0, 4.0, 0.07), 0.0]]))

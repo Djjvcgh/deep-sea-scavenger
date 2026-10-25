@@ -17,6 +17,9 @@ var _prompt_label: Label
 var _search_bar: ProgressBar
 var _extract_label: Label
 var _notice_box: VBoxContainer
+var _return_label: Label
+var _vignette: ColorRect
+var _heartbeat_cd := 0.0
 var _t := 0.0
 
 
@@ -31,6 +34,13 @@ func _ready() -> void:
 
 
 func _build() -> void:
+	# 临界体力红晕（最底层，不拦截鼠标）
+	_vignette = ColorRect.new()
+	_vignette.color = Color(0.75, 0.08, 0.08, 0.0)
+	_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_vignette)
+
 	# 左上：生命 + 体力
 	var tl := VBoxContainer.new()
 	tl.position = Vector2(16, 12)
@@ -64,6 +74,10 @@ func _build() -> void:
 	_stamina_bar.max_value = 100.0
 	_stamina_bar.value = 100.0
 	stam_row.add_child(_stamina_bar)
+
+	# 返航体力预估：支撑"现在返航还来得及吗"的决策
+	_return_label = UICommon.label("", 15, UICommon.DIM)
+	tl.add_child(_return_label)
 
 	# 右上：背包 + 估值
 	var tr := VBoxContainer.new()
@@ -185,9 +199,10 @@ func _process(delta: float) -> void:
 	elif player.focus_target != null:
 		if player.focus_target.has_method("begin_search"):
 			if player.focus_target.can_search(player):
-				_prompt_label.text = "长按 E 搜索：%s（占 %d 格）" \
+				_prompt_label.text = "长按 E 搜索：%s（%d 格 · 估值 %d）" \
 					% [player.focus_target.interact_prompt(),
-					int(ItemDB.TREASURES[player.focus_target.treasure_id]["slots"])]
+					int(ItemDB.TREASURES[player.focus_target.treasure_id]["slots"]),
+					int(ItemDB.TREASURES[player.focus_target.treasure_id]["value"])]
 			else:
 				_prompt_label.text = player.focus_target.blocked_reason()
 		else:
@@ -199,6 +214,34 @@ func _process(delta: float) -> void:
 
 	# 撤离提示
 	_extract_label.visible = dive != null and dive.in_extraction and not dive.ended
+
+	# 返航体力预估（按游泳效率保守估算）
+	var alive: bool = not player.dead and dive != null and not dive.ended
+	if alive and not dive.in_extraction and player.global_position.x > 700.0:
+		var ec: Vector2 = MapDataRes.EXTRACT_RECT.get_center()
+		var dist: float = player.global_position.distance_to(ec)
+		var speed: float = BalanceRes.SWIM_SPEED * GameState.speed_mult() * GameState.weight_speed_mult()
+		var cost: float = dist / speed * BalanceRes.DRAIN_SWIM * GameState.weight_drain_mult()
+		if cost > player.stamina:
+			_return_label.text = "体力不足以返航！（约需 %d）" % ceili(cost)
+			_return_label.add_theme_color_override("font_color", UICommon.DANGER)
+		else:
+			_return_label.text = "返航预计消耗 %d 体力" % ceili(cost)
+			_return_label.add_theme_color_override("font_color", UICommon.DIM)
+		_return_label.visible = true
+	else:
+		_return_label.visible = false
+
+	# 临界体力：红晕脉冲 + 心跳
+	if alive and ratio <= BalanceRes.CRIT_STAMINA_RATIO:
+		_vignette.color.a = 0.14 + 0.1 * (0.5 + 0.5 * sin(_t * 7.0))
+		_heartbeat_cd -= delta
+		if _heartbeat_cd <= 0.0:
+			_heartbeat_cd = 0.95
+			Sfx.play("heartbeat", -2.0)
+	else:
+		_vignette.color.a = 0.0
+		_heartbeat_cd = 0.0
 
 	# 危险警告（优先级：鲨鱼 > 重度低体力 > 低体力）
 	if dive != null and dive.any_shark_alerting():

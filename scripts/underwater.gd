@@ -26,7 +26,9 @@ var _extract_area: Area2D
 var _seaweeds: Array = []
 var _bubbles: Array = []
 var _shadow: Polygon2D
+var _canvas_mod: CanvasModulate
 var _shadow_t := 0.0
+var _tension_on := false
 
 
 func _ready() -> void:
@@ -94,12 +96,18 @@ func _end_dive(success: bool) -> void:
 	ended = true
 	var items: Array = GameState.dive_bag.duplicate()
 	var total := GameState.dive_total_value()
+	var elapsed := (Time.get_ticks_msec() - GameState.dive_start_msec) / 1000.0
 	GameState.end_dive(success)
 	SaveManager.save_game(GameState.serialize())
 	Sfx.stop_ambient()
+	Sfx.stop_tension()
 	Sfx.play("sell" if success else "fail")
 	get_tree().paused = true
-	results_panel.open(success, items, total)
+	results_panel.open(success, items, total, elapsed)
+
+
+func _exit_tree() -> void:
+	Sfx.stop_tension()
 
 
 func _on_dive_failed() -> void:
@@ -249,6 +257,11 @@ func _build_environment() -> void:
 	_shadow.z_index = -14
 	add_child(_shadow)
 
+	# 深度黑暗调制：区域C明显变暗，配合玩家潜水灯（能见度即风险）
+	_canvas_mod = CanvasModulate.new()
+	_canvas_mod.color = Color.WHITE
+	add_child(_canvas_mod)
+
 	# 沉船背景剪影
 	var silhouette := Polygon2D.new()
 	silhouette.polygon = PackedVector2Array([
@@ -359,3 +372,22 @@ func _process(delta: float) -> void:
 		if b.position.y < 20.0:
 			b.position.y = 900.0
 			b.position.x = randf_range(100, 5000)
+
+	# 深度黑暗：按区域平滑过渡
+	if player != null and is_instance_valid(player):
+		var target := Color.WHITE
+		match MapDataRes.zone_at(player.global_position.x):
+			"B":
+				target = Color(0.78, 0.84, 0.93)
+			"C":
+				target = Color(0.5, 0.57, 0.7)
+		_canvas_mod.color = _canvas_mod.color.lerp(target, minf(1.0, 2.5 * delta))
+
+	# 鲨鱼追逐紧张低音
+	var threat := not ended and any_shark_alerting()
+	if threat and not _tension_on:
+		_tension_on = true
+		Sfx.play_tension()
+	elif not threat and _tension_on:
+		_tension_on = false
+		Sfx.stop_tension()

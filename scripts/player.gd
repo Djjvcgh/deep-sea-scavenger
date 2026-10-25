@@ -48,6 +48,29 @@ func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING if mode == Mode.SWIM \
 		else CharacterBody2D.MOTION_MODE_GROUNDED
 	_build_visual()
+	if mode == Mode.SWIM:
+		_add_dive_light()
+
+
+## 潜水灯：配合区域C的黑暗（CanvasModulate），能见度即风险。
+func _add_dive_light() -> void:
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+	grad.colors = PackedColorArray([Color.WHITE, Color(0.55, 0.55, 0.55), Color.BLACK])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.width = 256
+	tex.height = 256
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(0.5, 0.0)
+	var light := PointLight2D.new()
+	light.texture = tex
+	light.texture_scale = 2.6
+	light.energy = 1.15
+	light.color = Color(0.8, 0.88, 1.0)
+	light.blend_mode = Light2D.BLEND_MODE_ADD
+	add_child(light)
 
 
 func _physics_process(delta: float) -> void:

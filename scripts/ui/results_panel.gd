@@ -52,20 +52,23 @@ func _build() -> void:
 	box.add_child(_back_btn)
 
 
-func open(success: bool, items: Array, total_value: int) -> void:
+func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0) -> void:
 	visible = true
 	for c in _list_box.get_children():
 		c.queue_free()
+	var time_text := ""
+	if elapsed_sec >= 0.0:
+		time_text = "（用时 %d分%02d秒）" % [int(elapsed_sec) / 60, int(elapsed_sec) % 60]
 	if success:
 		_title.text = "撤离成功"
 		_title.add_theme_color_override("font_color", UICommon.GOLD)
-		_subtitle.text = "战利品已安全运回荒岛，可在神秘商人处出售。"
+		_subtitle.text = "战利品已安全运回荒岛，可在神秘商人处出售。" + time_text
 		_total_label.text = "本次总估值：%d" % total_value
 		_total_label.add_theme_color_override("font_color", UICommon.GOLD)
 	else:
 		_title.text = "潜水失败"
 		_title.add_theme_color_override("font_color", UICommon.DANGER)
-		_subtitle.text = "体力耗尽或生命归零，失去了本次携带的全部宝物。已储存的额度、材料与造船进度不受影响。"
+		_subtitle.text = "体力耗尽或生命归零，失去了本次携带的全部宝物。已储存的额度、材料与造船进度不受影响。" + time_text
 		_total_label.text = "损失估值：%d" % total_value
 		_total_label.add_theme_color_override("font_color", UICommon.DANGER)
 

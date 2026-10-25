@@ -11,13 +11,16 @@ const PATHS := {
 	"build": "res://assets/audio/build_complete.wav",
 	"fail": "res://assets/audio/fail.wav",
 	"exhaust": "res://assets/audio/exhaust.wav",
+	"heartbeat": "res://assets/audio/heartbeat.wav",
 	"ambient_underwater": "res://assets/audio/ambient_underwater.wav",
 	"ambient_island": "res://assets/audio/ambient_island.wav",
+	"tension": "res://assets/audio/tension.wav",
 }
 
 var _streams := {}
 var _ambient_player: AudioStreamPlayer
 var _ambient_key := ""
+var _tension_player: AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -29,6 +32,9 @@ func _ready() -> void:
 	_ambient_player = AudioStreamPlayer.new()
 	_ambient_player.volume_db = -10.0
 	add_child(_ambient_player)
+	_tension_player = AudioStreamPlayer.new()
+	_tension_player.volume_db = -7.0
+	add_child(_tension_player)
 
 
 func play(key: String, volume_db := 0.0) -> void:
@@ -49,15 +55,32 @@ func play_ambient(key: String) -> void:
 	if not _streams.has(key):
 		_ambient_player.stop()
 		return
-	var stream: AudioStream = _streams[key]
-	if stream is AudioStreamWAV:
-		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		stream.loop_begin = 0
-		stream.loop_end = stream.data.size() / 2  # 16bit 单声道，样本数 = 字节/2
-	_ambient_player.stream = stream
+	_loop_wav(_streams[key])
+	_ambient_player.stream = _streams[key]
 	_ambient_player.play()
 
 
 func stop_ambient() -> void:
 	_ambient_key = ""
 	_ambient_player.stop()
+
+
+## 鲨鱼追逐期间的紧张低音循环。
+func play_tension() -> void:
+	if not _streams.has("tension"):
+		return
+	_loop_wav(_streams["tension"])
+	if not _tension_player.playing:
+		_tension_player.stream = _streams["tension"]
+		_tension_player.play()
+
+
+func stop_tension() -> void:
+	_tension_player.stop()
+
+
+func _loop_wav(stream: AudioStream) -> void:
+	if stream is AudioStreamWAV:
+		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		stream.loop_begin = 0
+		stream.loop_end = stream.data.size() / 2  # 16bit 单声道，样本数 = 字节/2

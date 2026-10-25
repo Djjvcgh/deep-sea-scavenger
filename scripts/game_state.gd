@@ -24,6 +24,7 @@ var boat_completed := false
 
 # ---- 单次下潜临时数据 ----
 var dive_bag: Array = []                # 本次潜水携带的宝物 id 列表
+var dive_start_msec := 0                # 本次下潜开始时刻（结算显示用时）
 
 
 func reset_defaults() -> void:
@@ -154,6 +155,7 @@ func remove_dive_item(id: String) -> bool:
 
 func start_dive() -> void:
 	dive_bag = []
+	dive_start_msec = Time.get_ticks_msec()
 	dive_bag_changed.emit()
 
 
