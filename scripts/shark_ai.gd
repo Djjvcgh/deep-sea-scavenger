@@ -32,8 +32,10 @@ var _anim_t := 0.0
 @onready var bite: Area2D = $Bite
 @onready var visual: Node2D = $Visual
 
-var _tail: Node2D
 var _mark: Node2D
+var _sprite: AnimatedSprite2D
+
+const SHARK_SCN := "res://assets/scenery/blacktide/"
 
 
 func setup(min_x: float, max_x: float, y: float, player_ref: CharacterBody2D) -> void:
@@ -196,8 +198,8 @@ func _animate() -> void:
 		return
 	if absf(velocity.x) > 8.0:
 		visual.scale.x = signf(velocity.x)
-	var rate := 10.0 if state == State.CHASE else 6.0
-	_tail.rotation = sin(_anim_t * rate) * 0.45
+	if _sprite != null:
+		_sprite.speed_scale = 1.6 if state == State.CHASE else 1.0
 	_mark.visible = is_threatening()
 	if _mark.visible:
 		_mark.position.y = -40.0 + sin(_anim_t * 8.0) * 3.0
@@ -212,35 +214,17 @@ func _animate() -> void:
 
 
 func _build_visual() -> void:
-	var body := Polygon2D.new()
-	body.polygon = _ellipse(30.0, 10.0)
-	body.color = Color(0.32, 0.38, 0.44)
-	visual.add_child(body)
-
-	var belly := Polygon2D.new()
-	belly.polygon = _ellipse(24.0, 6.0)
-	belly.position = Vector2(-2, 4)
-	belly.color = Color(0.55, 0.6, 0.64)
-	visual.add_child(belly)
-
-	var dorsal := Polygon2D.new()
-	dorsal.polygon = PackedVector2Array([Vector2(-6, -9), Vector2(2, -22), Vector2(10, -9)])
-	dorsal.color = Color(0.26, 0.31, 0.36)
-	visual.add_child(dorsal)
-
-	_tail = Node2D.new()
-	_tail.position = Vector2(-28, 0)
-	var tail_poly := Polygon2D.new()
-	tail_poly.polygon = PackedVector2Array([Vector2(0, -11), Vector2(0, 11), Vector2(-20, 0)])
-	tail_poly.color = Color(0.26, 0.31, 0.36)
-	_tail.add_child(tail_poly)
-	visual.add_child(_tail)
-
-	var eye := Polygon2D.new()
-	eye.polygon = _ellipse(2.5, 2.5, 8)
-	eye.position = Vector2(19, -4)
-	eye.color = Color(0.05, 0.05, 0.05)
-	visual.add_child(eye)
+	# 像素帧动画（4 帧摆尾）；状态染色与翻转由 visual 承担
+	var frames := SpriteFrames.new()
+	for i in 4:
+		frames.add_frame("default", load(SHARK_SCN + "shark_swim_%d.png" % i))
+	frames.set_animation_speed("default", 6.0)
+	frames.set_animation_loop("default", true)
+	_sprite = AnimatedSprite2D.new()
+	_sprite.sprite_frames = frames
+	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_sprite.play("default")
+	visual.add_child(_sprite)
 
 	_mark = Node2D.new()
 	_mark.visible = false

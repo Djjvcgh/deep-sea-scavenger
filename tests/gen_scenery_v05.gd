@@ -107,6 +107,11 @@ func _initialize() -> void:
 	_wreck_debris()
 	_pier_post()
 	_wood_pile()
+	# ---- 角色帧动画：潜水员（游/走）与鲨鱼 ----
+	for i in 4:
+		_diver_swim(i)
+		_diver_walk(i)
+		_shark_swim(i)
 	print("场景贴图生成完成：%s / %s" % [OUT, OUT_HUD])
 	quit(0)
 
@@ -1576,3 +1581,141 @@ func _wood_pile() -> void:
 			_px(img, cx, cy, WOOD_DD)
 	_outline(img)
 	_save(img, "wood_pile")
+
+
+# ==================== 角色帧动画（潜水员 / 鲨鱼） ====================
+
+const SUIT := Color("24384C")
+const SUIT_D := Color("182A3A")
+const SKIN := Color("C89468")
+const MASK_G := Color("63C7CE")
+const TANK_S := Color("9AA6B2")
+const FIN_Y := Color("C9B44A")
+const SHARK_C := Color("5A6470")
+const SHARK_D2 := Color("454E58")
+const SHARK_L := Color("8C96A2")
+const BELLY := Color("C6CDD4")
+
+
+## 潜水员游动帧（水平，头朝右；脚蹼相位 上/中/下/中）。
+func _diver_swim(frame: int) -> void:
+	var img := _img(28, 18)
+	var kick: int = [-1, 0, 1, 0][frame]
+	# 躯干
+	for x in range(6, 20):
+		for y in range(6, 12):
+			var col: Color = SUIT
+			if y == 11 or x == 6:
+				col = SUIT_D
+			_px(img, x, y, col)
+	_px(img, 7, 6, SUIT_D)
+	_px(img, 18, 6, SUIT_D)
+	# 头 + 面镜
+	for x in range(19, 24):
+		for y in range(5, 11):
+			if Vector2(x - 21.0, y - 8.0).length() <= 3.1:
+				_px(img, x, y, SKIN)
+	_rect(img, 21, 5, 4, 3, MASK_G)
+	_rect(img, 21, 5, 4, 1, Color("0F2A30"))
+	_px(img, 24, 7, Color("0F2A30"))
+	# 背上气瓶
+	_rect(img, 9, 2, 7, 4, TANK_S)
+	_rect(img, 9, 2, 7, 1, Color("C9D2DA"))
+	_px(img, 15, 3, Color("6A7280"))
+	# 手臂沿身体前伸
+	_rect(img, 16, 10, 4, 2, SUIT_D)
+	_px(img, 20, 11, SKIN)
+	# 双脚蹼（反相摆动）
+	var f1y := 7 + kick * 2
+	var f2y := 10 - kick * 2
+	for t in 6:
+		var drop: int = int(float(t) / 3.0 * float(kick))
+		_px(img, 5 - t, f1y + drop, FIN_Y)
+		_px(img, 5 - t, f1y + drop + 1, Color("9A8834"))
+		_px(img, 5 - t, f2y - drop, FIN_Y)
+		_px(img, 5 - t, f2y - drop + 1, Color("9A8834"))
+	# 呼气气泡（隔帧）
+	if frame % 2 == 1:
+		_px(img, 26, 3, Color("BFE8F0"))
+		_px(img, 25, 1, Color("BFE8F0"))
+	_outline(img)
+	_save(img, "diver_swim_%d" % frame)
+
+
+## 潜水员行走帧（竖直，朝右；跨步 左/并/右/并）。
+func _diver_walk(frame: int) -> void:
+	var img := _img(16, 22)
+	var stride: int = [1, 0, -1, 0][frame]
+	# 头（额上面镜带）
+	for x in range(4, 12):
+		for y in range(2, 9):
+			if Vector2(x - 8.0, y - 5.0).length() <= 3.2:
+				_px(img, x, y, SKIN)
+	_rect(img, 6, 2, 5, 1, MASK_G)
+	# 躯干
+	for y in range(8, 16):
+		for x in range(6, 11):
+			_px(img, x, y, SUIT if y < 14 else SUIT_D)
+	# 腰带与扣
+	_rect(img, 6, 12, 5, 1, Color("3A2E1E"))
+	_px(img, 8, 12, GOLD_D)
+	# 背上气瓶（右肩后侧露出）
+	_rect(img, 11, 8, 2, 6, TANK_S)
+	_px(img, 11, 8, Color("C9D2DA"))
+	# 手臂随步伐轻摆
+	_rect(img, 10 + stride, 10, 2, 4, SUIT_D)
+	_px(img, 10 + stride, 14, SKIN)
+	# 双腿交替
+	var lx := 7 + stride
+	var rx := 8 - stride
+	for y in range(15, 19):
+		_px(img, lx, y, SUIT_D)
+		_px(img, rx, y, SUIT_D)
+	_rect(img, lx - 1, 18, 3, 2, Color("14181E"))
+	_rect(img, rx - 1, 18, 3, 2, Color("14181E"))
+	_outline(img)
+	_save(img, "diver_walk_%d" % frame)
+
+
+## 鲨鱼游动帧（头朝右；尾摆相位 上/中/下/中）。
+func _shark_swim(frame: int) -> void:
+	var img := _img(46, 20)
+	var sway: int = [-1, 0, 1, 0][frame]
+	# 纺锤身体
+	for x in range(6, 36):
+		var t := float(x - 6) / 29.0
+		var half := 2.8 + 4.6 * sin(PI * (0.12 + 0.88 * t))
+		for y in range(int(round(10.0 - half)), int(round(10.0 + half)) + 1):
+			var col: Color = SHARK_C
+			if y >= 10:
+				col = BELLY.lerp(SHARK_C, clampf(float(y - 10) / (half + 1.0), 0.0, 1.0) * 0.55)
+			if x <= 10:
+				col = col.darkened(0.12)
+			_px(img, x, y, col)
+	# 背鳍
+	_rect(img, 16, 3, 2, 1, SHARK_D2)
+	_rect(img, 14, 4, 6, 1, SHARK_D2)
+	_rect(img, 13, 5, 8, 1, SHARK_D2)
+	# 胸鳍
+	for t in 5:
+		_px(img, 20 - t, 14 + t / 2, SHARK_D2)
+	# 鳃缝
+	for g in 3:
+		_px(img, 24 - g * 2, 11, SHARK_D2)
+		_px(img, 24 - g * 2, 12, SHARK_D2)
+	# 嘴线与眼
+	for t in 4:
+		_px(img, 30 + t, 13, SHARK_D2)
+	_px(img, 31, 8, Color("0A0C0E"))
+	_px(img, 32, 8, Color("0A0C0E"))
+	_px(img, 31, 7, Color.WHITE)
+	# 尾部（随相位上下摆 + 上下叶）
+	for t in 10:
+		var ty := 10.0 + (float(t) / 10.0) * float(sway) * 4.0
+		_px(img, 6 - t, int(round(ty)), SHARK_D2)
+		_px(img, 6 - t, int(round(ty)) + 1, SHARK_D2)
+	for t in 5:
+		_px(img, 1 - t / 2, int(8 + sway * 3) - t / 2, SHARK_D2)
+		_px(img, 1 - t / 2, int(12 + sway * 3) + t / 2, SHARK_D2)
+	_outline(img)
+	_save(img, "shark_swim_%d" % frame)
