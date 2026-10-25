@@ -117,6 +117,29 @@ func _run() -> void:
 		await create_timer(1.5).timeout
 		_check(shark.is_threatening(), "开阔水域鲨鱼发现玩家进入警戒/追逐")
 
+	# ---------- 海面换气 ----------
+	print("[海面换气]")
+	get_nodes_in_group("sharks")[0].global_position = Vector2(4800, 860)
+	player.global_position = Vector2(800, 50)
+	player.velocity = Vector2.ZERO
+	player.stamina = 50.0
+	await create_timer(2.0).timeout
+	_check(player.breathing, "贴近开放海面进入换气状态")
+	_check(player.stamina > 64.0, "换气 2 秒恢复约 16 点（实际 %.1f）" % player.stamina)
+	_check(player.stamina <= player.max_stamina, "恢复不超过当前体力上限")
+	# 岩层下方（区域C巨影岩体）：上方无天空，不能换气
+	player.global_position = Vector2(4000, 540)
+	player.velocity = Vector2.ZERO
+	await create_timer(0.4).timeout
+	_check(player._sky_above() == false, "岩体下方检测到顶盖遮挡")
+	_check(not player.breathing, "岩层下方不进入换气")
+	# 深水：退出换气并继续消耗
+	player.global_position = Vector2(800, 700)
+	player.velocity = Vector2.ZERO
+	var st0: float = player.stamina
+	await create_timer(1.0).timeout
+	_check(not player.breathing and player.stamina < st0, "深水退出换气并继续消耗体力")
+
 	gs.reset_defaults()
 	OS.set_environment("DEEPSEA_SEED", "")
 	if failures == 0:

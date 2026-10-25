@@ -9,6 +9,7 @@ var dive: Node2D
 
 var _hp_dots: Array = []
 var _stamina_bar: ProgressBar
+var _breath_label: Label
 var _bag_label: Label
 var _value_label: Label
 var _seed_label: Label
@@ -79,6 +80,10 @@ func _build() -> void:
 	_stamina_bar.max_value = 100.0
 	_stamina_bar.value = 100.0
 	stam_row.add_child(_stamina_bar)
+
+	# 换气提示（贴近开放海面时显示）
+	_breath_label = UICommon.label("", 15, UICommon.GOOD)
+	tl.add_child(_breath_label)
 
 	# 返航体力预估：支撑"现在返航还来得及吗"的决策
 	_return_label = UICommon.label("", 15, UICommon.DIM)
@@ -208,8 +213,15 @@ func _process(delta: float) -> void:
 	var ratio: float = player.stamina / player.max_stamina if player.max_stamina > 0.0 else 0.0
 	_stamina_bar.value = ratio * 100.0
 	var fill := StyleBoxFlat.new()
-	fill.bg_color = UICommon.DANGER if ratio <= BalanceRes.CRIT_STAMINA_RATIO \
-		else (UICommon.ORANGE if ratio <= BalanceRes.LOW_STAMINA_RATIO else UICommon.CYAN)
+	if player.breathing:
+		# 换气恢复动画：绿色条 + 呼吸脉冲
+		fill.bg_color = UICommon.GOOD.lerp(Color(0.7, 1.0, 0.8), 0.5 + 0.5 * sin(_t * 6.0))
+		_breath_label.text = "正在换气：体力恢复中 +%d/秒" % int(BalanceRes.SURFACE_REGEN)
+		_breath_label.modulate.a = 0.6 + 0.4 * sin(_t * 5.0)
+	else:
+		fill.bg_color = UICommon.DANGER if ratio <= BalanceRes.CRIT_STAMINA_RATIO \
+			else (UICommon.ORANGE if ratio <= BalanceRes.LOW_STAMINA_RATIO else UICommon.CYAN)
+		_breath_label.text = ""
 	fill.set_corner_radius_all(4)
 	_stamina_bar.add_theme_stylebox_override("fill", fill)
 
@@ -267,20 +279,25 @@ func _process(delta: float) -> void:
 	# 撤离提示
 	_extract_label.visible = dive != null and dive.in_extraction and not dive.ended
 
-	# 返航体力预估（按游泳效率保守估算）
+	# 返航体力预估（按游泳效率保守估算；换气中不会误报不足）
 	var alive: bool = not player.dead and dive != null and not dive.ended
 	if alive and not dive.in_extraction and player.global_position.x > 700.0:
 		var ec: Vector2 = MapDataRes.EXTRACT_RECT.get_center()
 		var dist: float = player.global_position.distance_to(ec)
 		var speed: float = BalanceRes.SWIM_SPEED * GameState.speed_mult() * GameState.weight_speed_mult()
 		var cost: float = dist / speed * BalanceRes.DRAIN_SWIM * GameState.weight_drain_mult()
-		if cost > player.stamina:
+		if player.breathing:
+			_return_label.text = "换气中——恢复后继续探索或返航"
+			_return_label.add_theme_color_override("font_color", UICommon.GOOD)
+			_return_label.visible = true
+		elif cost > player.stamina:
 			_return_label.text = "体力不足以返航！（约需 %d）" % ceili(cost)
 			_return_label.add_theme_color_override("font_color", UICommon.DANGER)
+			_return_label.visible = true
 		else:
 			_return_label.text = "返航预计消耗 %d 体力" % ceili(cost)
 			_return_label.add_theme_color_override("font_color", UICommon.DIM)
-		_return_label.visible = true
+			_return_label.visible = true
 	else:
 		_return_label.visible = false
 
@@ -295,8 +312,8 @@ func _process(delta: float) -> void:
 	if hint_label != null:
 		hint_label.text = _hint_base + (" · 空格 鱼叉刺击" if GameState.has_harpoon else "")
 
-	# 临界体力：红晕脉冲 + 心跳
-	if alive and ratio <= BalanceRes.CRIT_STAMINA_RATIO:
+	# 临界体力：红晕脉冲 + 心跳（换气恢复期间不告警）
+	if alive and not player.breathing and ratio <= BalanceRes.CRIT_STAMINA_RATIO:
 		_vignette.color.a = 0.14 + 0.1 * (0.5 + 0.5 * sin(_t * 7.0))
 		_heartbeat_cd -= delta
 		if _heartbeat_cd <= 0.0:
@@ -306,11 +323,13 @@ func _process(delta: float) -> void:
 		_vignette.color.a = 0.0
 		_heartbeat_cd = 0.0
 
-	# 危险警告（优先级：巨影 > 鲨鱼 > 重度低体力 > 低体力）
+	# 危险警告（优先级：巨影 > 鲨鱼 > 重度低体力 > 低体力；换气中不提示体力警告）
 	if dive != null and dive.any_boss_active():
 		_show_warning("深渊巨影盯上了你！", Color(0.8, 0.5, 0.85))
 	elif dive != null and dive.any_shark_alerting():
 		_show_warning("危险！鲨鱼发现了你！", UICommon.DANGER)
+	elif player.breathing:
+		_warning_label.visible = false
 	elif ratio <= BalanceRes.CRIT_STAMINA_RATIO:
 		_show_warning("体力即将耗尽！立即返航！", UICommon.DANGER)
 	elif ratio <= BalanceRes.LOW_STAMINA_RATIO:

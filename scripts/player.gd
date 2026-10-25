@@ -23,6 +23,7 @@ var stamina := 100.0
 var invincible_left := 0.0
 var dead := false
 var exhausted_fired := false
+var breathing := false            # 正在开放海面换气（停耗+恢复）
 var control_locked := false        # 搜索宝箱时锁定移动
 var focus_target: Area2D = null    # 当前可交互目标（供 HUD 显示提示）
 var active_chest: Area2D = null    # 正在搜索的宝箱
@@ -114,6 +115,12 @@ func _swim(delta: float) -> void:
 	if global_position.y < 40.0:
 		global_position.y = 40.0
 		velocity.y = maxf(0.0, velocity.y)
+	# 海面换气：贴近开放水面（上方与天空相通）时停止消耗并恢复体力
+	breathing = global_position.y <= BalanceRes.BREATH_DEPTH and _sky_above()
+	if breathing:
+		stamina = minf(max_stamina, stamina + BalanceRes.SURFACE_REGEN * delta)
+		stamina_changed.emit(stamina, max_stamina)
+		return
 	# 体力消耗（搜索期间按游泳消耗计）
 	var drain := BalanceRes.DRAIN_IDLE
 	if sprinting:
@@ -123,6 +130,14 @@ func _swim(delta: float) -> void:
 	elif dir != Vector2.ZERO:
 		drain = BalanceRes.DRAIN_SWIM
 	_drain_stamina(drain * GameState.weight_drain_mult() * delta)
+
+
+## 上方直到天空之间是否有实体遮挡（洞穴顶盖 / 岩层 / 沉船甲板下方不算海面）。
+func _sky_above() -> bool:
+	var space := get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(
+		global_position, Vector2(global_position.x, BalanceRes.SURFACE_Y - 300.0), 1)
+	return space.intersect_ray(query).is_empty()
 
 
 func _walk(delta: float) -> void:
@@ -301,6 +316,7 @@ func reset_for_dive() -> void:
 	hp = max_hp
 	dead = false
 	exhausted_fired = false
+	breathing = false
 	invincible_left = 0.0
 	_cancel_search()
 	visual.modulate = Color.WHITE

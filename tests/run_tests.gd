@@ -141,6 +141,8 @@ func _test_balance() -> int:
 	_check(is_equal_approx(Balance.SHARK_DETECT_RANGE * Balance.SHARK_DETECT_CURSE_MULT, 270.0),
 		"诅咒感知范围 = 270")
 	_check(Balance.MAX_HP == 3 and Balance.INVINCIBLE_TIME == 2.0, "生命3 / 无敌2秒")
+	_check(is_equal_approx(Balance.SURFACE_REGEN, 8.0) and is_equal_approx(Balance.BREATH_DEPTH, 70.0),
+		"换气参数：恢复 8/秒 · 贴水面 70px 内")
 	return 0
 
 

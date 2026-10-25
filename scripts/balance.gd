@@ -21,6 +21,11 @@ const HEAVY_DRAIN_MULT := 1.2     # 负重时体力消耗 ×1.2
 const LOW_STAMINA_RATIO := 0.35   # 低于35%：提示返航
 const CRIT_STAMINA_RATIO := 0.20  # 低于20%：红色危险警告
 
+# ---- 海面换气 ----
+const SURFACE_Y := 40.0           # 水面高度（玩家 y 最低被限制在此）
+const BREATH_DEPTH := 70.0        # 距水面多深内可换气（需上方与天空相通）
+const SURFACE_REGEN := 8.0        # 换气每秒恢复的体力（不超过当前上限）
+
 # ---- 生命 ----
 const MAX_HP := 3
 const INVINCIBLE_TIME := 2.0      # 受伤后无敌时间（秒）
