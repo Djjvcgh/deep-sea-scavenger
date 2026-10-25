@@ -28,6 +28,7 @@ const PauseScene := preload("res://scenes/ui/pause_menu.tscn")
 const SwitchScene := preload("res://scenes/level_switch.tscn")
 
 const SPR := "res://assets/sprites/kenney_fish/"
+const SCN := "res://assets/scenery/blacktide/"
 const LEVEL_PATH := "res://scenes/level_blacktide.tscn"
 
 const PLAYER_SPAWN := Vector2(240, 420)
@@ -141,6 +142,9 @@ var _t := 0.0
 var _seaweeds: Array = []
 var _schools: Array = []
 var _bubbles: Array = []
+var _lantern_glow: Polygon2D
+var _secret_glint: Polygon2D
+var _gold_glints: Array = []
 
 
 func _ready() -> void:
@@ -152,6 +156,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_terrain()
 	_build_doors()
+	_build_hold_dressing()
 	_build_extraction()
 	_spawn_chests()
 	_spawn_switches()
@@ -185,7 +190,6 @@ func _ready() -> void:
 	pause_menu.setup(true)
 
 	hud.spawn_notice("黑潮号残骸：上层甲板快但有鲨鱼；船底破口安全但绕远", UICommon.CYAN)
-	hud.spawn_notice("[测试] R 重置 · F1 背包档位 · F2 补满体力 · F3 鲨鱼 · F4 鱼叉", UICommon.DIM)
 	Sfx.play_ambient("ambient_underwater")
 
 
@@ -230,10 +234,18 @@ func get_zone_label() -> String:
 
 
 func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("inventory") and not loot_panel.visible and not ended:
+	if loot_panel.visible:
+		if event.is_action_pressed("interact"):
+			loot_panel.take_all_and_close()
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("pause"):
+			loot_panel.close()
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("inventory") and not ended:
 		inventory_panel.toggle()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("pause") and not loot_panel.visible:
+	elif event.is_action_pressed("pause"):
 		pause_menu.open()
 		get_viewport().set_input_as_handled()
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -656,6 +668,177 @@ func _solid_visual(rect: Rect2, kind: String) -> Node2D:
 	return node
 
 
+# ---------------- 船长货舱样板房视觉层（V0.5） ----------------
+# 只读贴图与光照，不参与碰撞；区域身份由船体结构本身表达（无文字标签）。
+
+func _scn_sprite(name: String, pos: Vector2, z: int, scale := 2.0,
+		tint := Color.WHITE, rot := 0.0, flip_v := false) -> Sprite2D:
+	var s := Sprite2D.new()
+	s.texture = load(SCN + name + ".png")
+	s.position = pos
+	s.scale = Vector2(scale, -scale if flip_v else scale)
+	s.rotation = rot
+	s.z_index = z
+	s.modulate = tint
+	s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	add_child(s)
+	return s
+
+
+## 木板墙平铺（hull_wall_a 为主，规律掺入破损 hull_wall_b）。
+func _tile_walls(rect: Rect2, tint: Color, seed := 0) -> void:
+	var tw := 192.0
+	var th := 32.0
+	var ix := 0
+	var iy := 0
+	var y := rect.position.y
+	while y < rect.end.y:
+		var x := rect.position.x
+		ix = 0
+		while x < rect.end.x:
+			var damaged := (ix * 7 + iy * 3 + seed) % 6 == 0
+			_scn_sprite("hull_wall_b" if damaged else "hull_wall_a",
+				Vector2(x + tw / 2.0, y + th / 2.0), 0, 2.0, tint)
+			x += tw
+			ix += 1
+		y += th
+		iy += 1
+
+
+func _build_hold_dressing() -> void:
+	# 房间块：外框正常亮度，室内背板压暗（Dead Cells 前后景分离）
+	_tile_walls(Rect2(2876, 846, 372, 228), Color(0.88, 0.84, 0.8), 3)
+	_tile_walls(Rect2(2918, 893, 324, 139), Color(0.5, 0.53, 0.6), 7)
+
+	# 船肋：间隔竖向结构（沉船内部的骨架韵律）
+	for i in 4:
+		var x := 2954.0 + i * 80.0
+		_scn_sprite("hull_rib", Vector2(x, 960), 1, 2.0, Color.WHITE,
+			[-0.05, 0.04, -0.03, 0.05][i])
+
+	# 倚墙断裂横梁（金库背景的纵深感）
+	var beam := _scn_sprite("beam_broken", Vector2(3152, 945), 1, 0.85, Color(1.05, 1.0, 0.92))
+	beam.rotation = deg_to_rad(108.0)
+
+	# 舷窗（舱内一点"外面还有海"的暗示）
+	_scn_sprite("porthole", Vector2(3000, 930), 1)
+	_scn_sprite("porthole", Vector2(3148, 930), 1)
+
+	# 地面沉积
+	for cfg in [["sediment_b", 2940, 1019], ["sediment_a", 2990, 1016],
+			["sediment_b", 3135, 1019], ["sediment_a", 3185, 1014]]:
+		_scn_sprite(cfg[0], Vector2(cfg[1], cfg[2]), 1)
+
+	# 家具：航海桌（日志）/ 神龛（密室线索）/ 绞盘（捷径）
+	_scn_sprite("desk", Vector2(2940, 998), 2)
+	_scn_sprite("shrine", Vector2(3222, 994), 2)
+	_scn_sprite("winch", Vector2(3192, 1002), 2)
+
+	# 货件：木桶 / 敞口桶（金光）/ 货箱堆 / 缆绳
+	_scn_sprite("barrel", Vector2(2976, 1000), 2)
+	_scn_sprite("barrel_open", Vector2(3008, 1002), 2, 2.0, Color(1.0, 0.98, 0.94))
+	_scn_sprite("crate", Vector2(3160, 1006), 2)
+	_scn_sprite("crate", Vector2(3168, 958), 2, 2.0, Color.WHITE, 0.07)
+	_scn_sprite("rope_coil", Vector2(3090, 1016), 2)
+	_scn_sprite("rope_hang", Vector2(3100, 933), 2)
+
+	# 悬挂油灯 + 暖光晕（船长舱室的人造光）
+	_scn_sprite("lantern", Vector2(3082, 911), 2)
+	_lantern_glow = _add_glow(Vector2(3082, 920), 64.0, 36.0,
+		Color(1.0, 0.72, 0.3, 0.22), 1)
+	add_child(_lantern_glow)
+	add_child(_add_glow(Vector2(3082, 915), 26.0, 15.0,
+		Color(1.0, 0.82, 0.45, 0.25), 1))
+
+	# 舱内海草：地面两丛 + 倒挂两丛
+	_scn_sprite("seaweed_hold", Vector2(2932, 1004), 2)
+	_scn_sprite("seaweed_hold", Vector2(3238, 1006), 2)
+	_scn_sprite("seaweed_hold", Vector2(2960, 921), 2, 2.0, Color.WHITE, 0.0, true)
+	_scn_sprite("seaweed_hold", Vector2(3232, 921), 2, 2.0, Color(0.9, 0.95, 0.95), 0.0, true)
+
+	# 可疑角落：神龛上方倾斜搁架 + 暗门底缝青绿微光 + 金库旁散落金件
+	_scn_sprite("shelf", Vector2(3234, 952), 2, 2.0, Color(1.0, 0.97, 0.92), -0.18)
+	_secret_glint = _add_glow(Vector2(3247, 978), 16.0, 10.0,
+		Color(0.4, 0.95, 0.85, 0.14), 1)
+	add_child(_secret_glint)
+	for gpos in [Vector2(3110, 1024), Vector2(3148, 1026), Vector2(3122, 1018)]:
+		var glint := _add_glow(gpos, 5.0, 4.0, Color(0.98, 0.85, 0.4, 0.5), 1)
+		add_child(glint)
+		_gold_glints.append(glint)
+
+	# 前景遮挡（透明度压低，不破坏可读性）
+	_scn_sprite("seaweed_hold", Vector2(2925, 1006), 6, 2.0, Color(1, 1, 1, 0.8), 0.0, true)
+	_scn_sprite("rope_hang", Vector2(3238, 946), 6, 2.0, Color(1, 1, 1, 0.85))
+
+	_build_hold_particles()
+
+
+func _add_glow(pos: Vector2, rx: float, ry: float, color: Color, z: int) -> Polygon2D:
+	var glow := Polygon2D.new()
+	glow.polygon = _ellipse_pts(rx, ry, 16)
+	glow.position = pos
+	glow.color = color
+	glow.z_index = z
+	return glow
+
+
+static func _ellipse_pts(rx: float, ry: float, n := 16) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in n:
+		var a := TAU * float(i) / float(n)
+		pts.append(Vector2(cos(a) * rx, sin(a) * ry))
+	return pts
+
+
+func _build_hold_particles() -> void:
+	# 悬浮微粒：静水中的尘埃感
+	var motes := CPUParticles2D.new()
+	motes.position = Vector2(3080, 962)
+	motes.z_index = 3
+	motes.emitting = true
+	motes.amount = 36
+	motes.lifetime = 6.5
+	motes.preprocess = 4.0
+	motes.texture = load(SCN + "mote.png")
+	motes.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	motes.scale_amount_min = 0.4
+	motes.scale_amount_max = 0.9
+	motes.color = Color(0.78, 0.9, 0.88, 0.4)
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(150, 62)
+	motes.direction = Vector2(0.15, -1)
+	motes.spread = 12
+	motes.initial_velocity_min = 2.0
+	motes.initial_velocity_max = 6.0
+	motes.gravity = Vector2(0, -1.5)
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+	ramp.colors = PackedColorArray([
+		Color(0.78, 0.9, 0.88, 0.0), Color(0.78, 0.9, 0.88, 0.45),
+		Color(0.78, 0.9, 0.88, 0.3), Color(0.78, 0.9, 0.88, 0.0)])
+	motes.color_ramp = ramp
+	add_child(motes)
+
+	# 敞口木桶冒泡
+	var bub := CPUParticles2D.new()
+	bub.position = Vector2(3008, 988)
+	bub.z_index = 3
+	bub.emitting = true
+	bub.amount = 3
+	bub.lifetime = 3.2
+	bub.preprocess = 2.0
+	bub.texture = _tex("bubble_a")
+	bub.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	bub.scale_amount_min = 0.08
+	bub.scale_amount_max = 0.14
+	bub.modulate = Color(1, 1, 1, 0.7)
+	bub.direction = Vector2(0, -1)
+	bub.spread = 8
+	bub.initial_velocity_min = 8.0
+	bub.initial_velocity_max = 14.0
+	add_child(bub)
+
+
 ## 灰盒导视：入口与房间名（密室除外——秘密靠视觉线索）。
 func _build_room_signs() -> void:
 	_add_sign("船底破口 · 安全", Vector2(830, 845), UICommon.GOOD)
@@ -665,7 +848,6 @@ func _build_room_signs() -> void:
 	_add_sign("前货舱", Vector2(1530, 668), UICommon.DIM)
 	_add_sign("轮机舱", Vector2(2510, 668), UICommon.DIM)
 	_add_sign("船尾舱", Vector2(3080, 660), UICommon.DIM)
-	_add_sign("船长货舱", Vector2(3080, 918), UICommon.GOLD)
 	_add_sign("龙骨夹层", Vector2(2050, 1112), UICommon.DIM)
 	_add_sign("黑潮号", Vector2(2100, 505), Color(0.72, 0.6, 0.42))
 
@@ -789,6 +971,16 @@ func _process(delta: float) -> void:
 		var crack: Line2D = _doors["secret"].get_node_or_null("Crack")
 		if crack != null:
 			crack.modulate.a = 0.45 + 0.35 * sin(_t * 2.6)
+
+	# 样板房光效：油灯暖光闪烁 / 暗门微光呼吸 / 散金闪光
+	if _lantern_glow != null:
+		_lantern_glow.color.a = 0.13 + 0.05 * (0.5 + 0.5 * sin(_t * 7.3)) \
+			+ 0.02 * (0.5 + 0.5 * sin(_t * 13.7))
+	if _secret_glint != null:
+		_secret_glint.color.a = 0.1 + 0.07 * (0.5 + 0.5 * sin(_t * 1.8))
+	for i in _gold_glints.size():
+		var g: Polygon2D = _gold_glints[i]
+		g.color.a = 0.35 + 0.45 * maxf(0.0, sin(_t * 2.2 + i * 2.1))
 
 	# 鲨鱼警觉时的紧张低音
 	var threat: bool = not ended and any_shark_alerting()

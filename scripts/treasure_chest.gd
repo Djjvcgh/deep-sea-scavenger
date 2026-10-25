@@ -6,6 +6,8 @@ extends Area2D
 
 const ItemDBRes := preload("res://scripts/item_db.gd")
 
+const SCN := "res://assets/scenery/blacktide/"
+
 var container_kind := "chest"
 var container_name := "沉船宝箱"
 var search_total := 3.0
@@ -16,8 +18,8 @@ var _remaining: Array = []          # 已开箱但未取走的掉落（留在箱
 
 var _glow: Polygon2D
 var _core_glow: Polygon2D
-var _lid: Node2D
-var _box: Polygon2D
+var _spr_closed: Sprite2D
+var _spr_open: Sprite2D
 var _body_visuals: Node2D
 var _t := randf() * TAU
 
@@ -114,8 +116,8 @@ func restore_leftovers(entries: Array) -> void:
 func _apply_looted_visual() -> void:
 	match container_kind:
 		"chest":
-			_lid.rotation = -1.0
-			_box.color = Color(0.28, 0.2, 0.13)
+			_spr_closed.visible = false
+			_spr_open.visible = true
 		_:
 			_body_visuals.modulate = Color(0.55, 0.55, 0.58)
 
@@ -162,24 +164,20 @@ func _build(glow_color: Color) -> void:
 
 
 func _build_chest() -> void:
-	_box = Polygon2D.new()
-	_box.polygon = PackedVector2Array([
-		Vector2(-16, -12), Vector2(16, -12), Vector2(16, 10), Vector2(-16, 10)])
-	_box.color = Color(0.36, 0.23, 0.13)
-	_body_visuals.add_child(_box)
-
-	var trim := Polygon2D.new()
-	trim.polygon = PackedVector2Array([Vector2(-16, -3), Vector2(16, -3), Vector2(16, 1), Vector2(-16, 1)])
-	trim.color = Color(0.85, 0.68, 0.25)
-	_body_visuals.add_child(trim)
-
-	_lid = Node2D.new()
-	_lid.position = Vector2(-16, -12)
-	var lid_poly := Polygon2D.new()
-	lid_poly.polygon = PackedVector2Array([Vector2(0, 0), Vector2(32, 0), Vector2(32, -8), Vector2(0, -8)])
-	lid_poly.color = Color(0.42, 0.28, 0.16)
-	_lid.add_child(lid_poly)
-	_body_visuals.add_child(_lid)
+	# 像素宝箱：关 / 开两态（视觉底部与旧多边形箱底对齐）
+	_spr_closed = Sprite2D.new()
+	_spr_closed.texture = load(SCN + "chest_closed.png")
+	_spr_closed.scale = Vector2.ONE * 1.6
+	_spr_closed.position = Vector2(0, -8)
+	_spr_closed.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_body_visuals.add_child(_spr_closed)
+	_spr_open = Sprite2D.new()
+	_spr_open.texture = load(SCN + "chest_open.png")
+	_spr_open.scale = Vector2.ONE * 1.6
+	_spr_open.position = Vector2(0, -8)
+	_spr_open.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_spr_open.visible = false
+	_body_visuals.add_child(_spr_open)
 
 
 func _build_shell() -> void:

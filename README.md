@@ -154,6 +154,25 @@ V0.5 第一阶段的手工灰盒关卡，主菜单「关卡测试：黑潮号残
 - 关卡文件：`scenes/level_blacktide.tscn` + `scripts/level_blacktide.gd`（地形/掉落/巡逻全部手写），
   机关交互点 `scripts/level_switch.gd`。
 
+### V0.5 第二阶段：参考驱动的美术重制（样板房 + HUD + 搜刮界面）
+
+规范先行：视觉方向、配色板与像素规格见 `docs/art_direction/v05_visual_direction.md`，
+素材清单与替换优先级见 `docs/art_direction/v05_asset_list.md`，参考来源与版权边界见
+`docs/references/REFERENCE_CHECKLIST.md`（不复制任何官方游戏图片，素材全部原创程序绘制或 CC0）。
+
+- **船长货舱样板房**：木板墙背板 + 竖向船肋 + 断裂斜梁 + 木桶/货箱/缆绳 + 航海桌/神龛/绞盘 +
+  舷窗油灯 + 沉积海草 + 悬浮微粒，区域身份完全由船体结构表达（无悬浮文字标签）；
+  隐藏角落保留青绿微光 + 倾斜搁架的"值得探索"暗示。碰撞与玩法完全未动（38 项集成测试全过）。
+- **宝箱升级**：全游戏宝箱换像素贴图（关/开两态），高亮呼吸保留。
+- **HUD 重做**：左上 心形生命 + 闪电体力条；顶部中央 撤离倒计时（区域名仅切换区域时短暂显示）；
+  右上 背包占用 + 战利品估值（图标化）；靠近可交互物才出现 E 键帽提示；
+  警告仅危险时出现；移除常驻操作说明与调试文本（键位见本 README）。
+- **搜刮界面重做**：品质底色 + 边框分层（破损灰 / 精良蓝 / 完美金），稀有物品 ★ 前缀，
+  高价值物品金色名 + 「高价值」标签 + 图标呼吸脉冲；面板高度随条目数收缩；
+  保留单独拾取 / 全部拾取（E）/ 离开。
+- 素材生成管线：`tests/gen_scenery_v05.gd`（场景件 + HUD 图标，幂等可重跑），
+  截图对比：`docs/art_direction/screens/`（before / after）。
+
 ## 已实现功能
 
 - 主菜单（新游戏/继续/设置音量与全屏/退出）+ 中文 UI
@@ -191,6 +210,7 @@ Godot_console.exe --headless -s res://tests/integration_v04.gd    # V0.4 端到�
 Godot_console.exe --headless -s res://tests/integration_menu.gd   # 主菜单（新游戏/继续）
 Godot_console.exe --headless -s res://tests/integration_blacktide.gd  # V0.5 黑潮号关卡（双路线/密室/捷径/结算/存档保护）
 Godot_console.exe -s res://tests/screenshot_blacktide.gd           # 黑潮号关卡截图（需窗口模式，输出 tests/shots/）
+Godot_console.exe --headless -s res://tests/gen_scenery_v05.gd     # V0.5 场景贴图/HUD 图标生成器（原创程序绘制，幂等）
 Godot_console.exe --headless -s res://tests/playtest_bot.gd       # 机器人试玩（区域C满载往返/开阔水逃脱/被咬反应窗口）
 Godot_console.exe --headless -s res://tests/gen_icons.gd          # 重新生成物品图标（首次已生成，通常无需运行）
 ```
@@ -214,10 +234,12 @@ Godot_console.exe --headless -s res://tests/gen_icons.gd          # 重新生成
 
 ## 后续计划
 
-v0.5 第一阶段已落地黑潮号残骸灰盒关卡（双路线 / 密室 / 返航捷径 / 存档保护，见上文关卡测试节）。
+v0.5 第一阶段落地黑潮号残骸关卡（双路线 / 密室 / 返航捷径 / 存档保护）；第二阶段完成
+参考驱动的美术重制样板（船长货舱样板房 / HUD / 搜刮界面，见上文与 `docs/art_direction/`）。
 其余候选议题（待讨论）：
 
-- 黑潮号关卡奖励接入正式循环、灰盒美术替换、更多手工关卡
+- 美术铺开：玩家与鲨鱼动画 → 甲板与各舱室结构件 → 背包网格化（优先级见 v05_asset_list.md）
+- 黑潮号关卡奖励接入正式循环、更多手工关卡
 - 更多沉船/洞穴模板与区域 D（深渊裂隙专属层）
 - Boss 击杀后的长期奖励线（主题专属解锁/材料）
 - 兵器升级（鱼叉射程/伤害档位、更多兵器类型）
@@ -225,5 +247,5 @@ v0.5 第一阶段已落地黑潮号残骸灰盒关卡（双路线 / 密室 / 返
 
 ## 授权
 
-- 代码与程序生成素材（图标/音效）：MIT（见 [LICENSE](LICENSE)）
+- 代码与程序生成素材（图标/音效/场景件）：MIT（见 [LICENSE](LICENSE)）
 - 第三方素材：[Kenney Fish Pack 2.0](https://opengameart.org/content/fish-pack-0)（CC0 公有领域）
