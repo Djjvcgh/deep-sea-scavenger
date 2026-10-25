@@ -223,6 +223,7 @@ func _build_visual() -> void:
 	_sprite = AnimatedSprite2D.new()
 	_sprite.sprite_frames = frames
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_sprite.scale = Vector2.ONE * 2.6
 	_sprite.play("default")
 	visual.add_child(_sprite)
 

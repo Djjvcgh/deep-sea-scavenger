@@ -3,10 +3,10 @@
 [ext_resource type="Script" path="res://scripts/shark_ai.gd" id="1_shark"]
 
 [sub_resource type="RectangleShape2D" id="shape_body"]
-size = Vector2(58, 20)
+size = Vector2(64, 26)
 
 [sub_resource type="RectangleShape2D" id="shape_bite"]
-size = Vector2(78, 30)
+size = Vector2(82, 36)
 
 [node name="Shark" type="CharacterBody2D"]
 collision_layer = 4
@@ -28,5 +28,5 @@ collision_mask = 2
 monitorable = false
 
 [node name="BiteShape" type="CollisionShape2D" parent="Bite"]
-position = Vector2(6, 0)
+position = Vector2(0, 0)
 shape = SubResource("shape_bite")

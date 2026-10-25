@@ -377,17 +377,17 @@ func _build_visual() -> void:
 
 ## 潜水姿态：像素帧动画（水平，头朝右）；朝向镜像与倾角旋转由 visual 节点承担。
 func _build_swim_visual() -> void:
-	_sprite = _make_char_frames("diver_swim", 8.0)
+	_sprite = _make_char_frames("diver_swim", 8.0, 2.6)
 
 
 
 ## 行走姿态：像素帧动画（竖直，朝右）。
 func _build_walk_visual() -> void:
-	_sprite = _make_char_frames("diver_walk", 7.0)
+	_sprite = _make_char_frames("diver_walk", 7.0, 2.4)
 
 
 ## 角色帧动画装配（4 帧循环，贴图来自 gen_scenery_v05）。
-func _make_char_frames(prefix: String, fps: float) -> AnimatedSprite2D:
+func _make_char_frames(prefix: String, fps: float, spr_scale := 2.0) -> AnimatedSprite2D:
 	var frames := SpriteFrames.new()
 	for i in 4:
 		frames.add_frame("default", load(CHAR_SCN + "%s_%d.png" % [prefix, i]))
@@ -396,6 +396,7 @@ func _make_char_frames(prefix: String, fps: float) -> AnimatedSprite2D:
 	var spr := AnimatedSprite2D.new()
 	spr.sprite_frames = frames
 	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	spr.scale = Vector2.ONE * spr_scale
 	spr.play("default")
 	visual.add_child(spr)
 	return spr
