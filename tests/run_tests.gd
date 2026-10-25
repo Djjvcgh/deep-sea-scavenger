@@ -17,6 +17,7 @@ func _initialize() -> void:
 	failures += _test_icons()
 	failures += _test_wrecks()
 	failures += _test_caves()
+	failures += _test_world_generation()
 	failures += _test_loot_randomness()
 	_print_result()
 	quit(1 if failures > 0 else 0)
@@ -445,7 +446,8 @@ func _test_wrecks() -> int:
 					var anchor := Vector2(anchor_cfg["x"], MapData.WRECK_FLOOR_Y)
 					var rects: Array = WreckGenC._world_rects(tpl, anchor)
 					var tag: String = "%s%d(%s)@%.0f %s" % [zone, vi, v["name"], anchor_cfg["x"], kind]
-					if not WreckGenC.placement_ok(rects, solids, v["chests"], v["patrols"]):
+					if not WreckGenC.placement_ok(rects, solids, v["chests"], v["patrols"],
+							WreckGenC._offset_rect(tpl["interior"], anchor)):
 						_check_quiet(false, "锚点非法：%s" % tag)
 						anchor_fail += 1
 				# 锚点自带容器点不与变体宝箱点重叠
@@ -566,6 +568,106 @@ func _wreck_rect_list(wrecks: Array) -> Array:
 	var out: Array = []
 	for w in wrecks:
 		out.append_array(w["rects"])
+	return out
+
+
+func _test_world_generation() -> int:
+	print("[整局生成校验：主题+沉船+洞穴+Boss巢穴]")
+	var WreckGenC = load("res://scripts/wreck_gen.gd")
+	var CaveGenC = load("res://scripts/cave_gen.gd")
+	var extract: Rect2 = MapData.EXTRACT_RECT.grow(40.0)
+	var themes := {}
+	var bad := 0
+	var wreck_theme_ok := 0
+	var cave_theme_ok := 0
+	var wreck_theme_count := 0
+	var cave_theme_count := 0
+	for seed_i in 100:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = seed_i
+		# 与场景 _roll_layout 一致的抽取顺序：主题 → 9次色调 → 3区域变体
+		var r := rng.randf()
+		var theme := "abyss"
+		if r <= float(MapData.DIVE_THEME_WEIGHTS["wreck"]):
+			theme = "wreck"
+		elif r <= float(MapData.DIVE_THEME_WEIGHTS["wreck"] + MapData.DIVE_THEME_WEIGHTS["cave"]):
+			theme = "cave"
+		themes[theme] = true
+		for i in 9:
+			rng.randf()
+		var chosen := {}
+		for zone in ["A", "B", "C"]:
+			var idx := rng.randi_range(0, MapData.ZONE_VARIANTS[zone].size() - 1)
+			chosen[zone] = {"index": idx, "variant": MapData.ZONE_VARIANTS[zone][idx]}
+		if theme == "wreck":
+			for attempt in 6:
+				if not chosen["B"]["variant"].get("wreck_anchors", []).is_empty():
+					break
+				var ridx := rng.randi_range(0, MapData.ZONE_VARIANTS["B"].size() - 1)
+				chosen["B"] = {"index": ridx, "variant": MapData.ZONE_VARIANTS["B"][ridx]}
+		if theme == "cave":
+			for attempt in 8:
+				if not chosen["C"]["variant"].get("no_hang", false):
+					break
+				var cidx := rng.randi_range(0, MapData.ZONE_VARIANTS["C"].size() - 1)
+				chosen["C"] = {"index": cidx, "variant": MapData.ZONE_VARIANTS["C"][cidx]}
+		var wrecks: Array = WreckGenC.generate(rng, chosen)
+		if theme == "wreck":
+			wreck_theme_count += 1
+			if wrecks.is_empty():
+				var forced: Dictionary = WreckGenC.force_one(rng, chosen)
+				if not forced.is_empty():
+					wrecks.append(forced)
+			if not wrecks.is_empty():
+				wreck_theme_ok += 1
+		var wreck_rects: Array = []
+		for w in wrecks:
+			wreck_rects.append_array(w["rects"])
+		var caves: Array = CaveGenC.generate(rng, chosen, wreck_rects,
+			3 if theme == "cave" else 2, "danger" if theme == "cave" else "")
+		if theme == "cave":
+			cave_theme_count += 1
+			var has_danger := false
+			for c in caves:
+				if c["kind"] in ["danger", "hang_danger"]:
+					has_danger = true
+			if has_danger:
+				cave_theme_ok += 1
+			else:
+				print("  [诊断] seed ", seed_i, " caves=", caves.map(func(c): return c["kind"]),
+					" C=", chosen["C"]["index"])
+		# Boss 触发区/巢穴中心必须是开阔水域（Boss 不出生在墙体里），且不压撤离区
+		for w in wrecks:
+			var center: Vector2 = (w["interior"] as Rect2).get_center()
+			if not MapData.circle_clear(center, 12.0,
+					MapData.variant_solids(w["zone"], chosen[w["zone"]]["index"])):
+				_check_quiet(false, "种子%d 沉船舱内中心撞到地形 %s" % [seed_i, center])
+				bad += 1
+			if extract.intersects(_footprint_rect(w["rects"])):
+				_check_quiet(false, "种子%d 沉船压到撤离区" % seed_i)
+				bad += 1
+		for c in caves:
+			var ccenter: Vector2 = (c["interior"] as Rect2).get_center()
+			if not MapData.circle_clear(ccenter, 12.0,
+					MapData.variant_solids(c["zone"], chosen[c["zone"]]["index"])):
+				_check_quiet(false, "种子%d 洞穴腔体中心撞到地形 %s" % [seed_i, ccenter])
+				bad += 1
+			if extract.intersects(_footprint_rect(c["rects"])):
+				_check_quiet(false, "种子%d 洞穴压到撤离区" % seed_i)
+				bad += 1
+	_check(bad == 0, "100 局：Boss 巢穴皆为开阔水域、不压撤离区与出生带")
+	_check(themes.size() == 3, "三种海域主题都出现（实际 %d）" % themes.size())
+	_check(wreck_theme_count == 0 or wreck_theme_ok == wreck_theme_count,
+		"沉船主题必有沉船（%d/%d 局）" % [wreck_theme_ok, wreck_theme_count])
+	_check(cave_theme_count == 0 or cave_theme_ok == cave_theme_count,
+		"洞穴主题必有危险洞穴（%d/%d 局）" % [cave_theme_ok, cave_theme_count])
+	return 0
+
+
+func _footprint_rect(rects: Array) -> Rect2:
+	var out: Rect2 = rects[0]
+	for r in rects:
+		out = out.merge(r)
 	return out
 
 

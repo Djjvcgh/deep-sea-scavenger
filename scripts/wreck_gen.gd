@@ -74,9 +74,18 @@ static func _offset_rect(r: Rect2, anchor: Vector2) -> Rect2:
 
 
 ## 布置合法性校验（run_tests 与生成共用）。
-## rects 为沉船船体（世界坐标），base_solids/chest_spots/patrols 为所在变体数据。
+## rects 为沉船船体（世界坐标），base_solids/chest_spots/patrols 为所在变体数据；
+## interior 为舱内水域（世界坐标），传入时要求其完全敞开。
 static func placement_ok(rects: Array, base_solids: Array, chest_spots: Array,
-		patrols: Array) -> bool:
+		patrols: Array, interior := Rect2()) -> bool:
+	# 舱内水域必须敞开（沉船是空心壳体，实体不得伸进舱内）
+	if interior.size.x > 0.0:
+		var interior_check := interior.grow(-6.0)
+		for r in base_solids:
+			if r[4] == "sand":
+				continue
+			if Rect2(r[0], r[1], r[2], r[3]).intersects(interior_check):
+				return false
 	# 1) 与已有非海床实体保持安全间隙（沉船底板贴着海床是正确姿态）
 	for wr in rects:
 		for r in base_solids:

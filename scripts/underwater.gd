@@ -173,6 +173,20 @@ func _roll_layout() -> void:
 		var variants: Array = MapDataRes.ZONE_VARIANTS[zone]
 		var index := _rng.randi_range(0, variants.size() - 1)
 		_chosen[zone] = {"index": index, "variant": variants[index]}
+	# 沉船主题：B 区变体无沉船锚点时按种子重抽（幽灵船长需要触发点）
+	if dive_theme == "wreck":
+		for attempt in 6:
+			if not _chosen["B"]["variant"].get("wreck_anchors", []).is_empty():
+				break
+			var idx := _rng.randi_range(0, MapDataRes.ZONE_VARIANTS["B"].size() - 1)
+			_chosen["B"] = {"index": idx, "variant": MapDataRes.ZONE_VARIANTS["B"][idx]}
+	# 洞穴主题：无悬洞空间的变体按种子重抽（海蛇需要潜伏点）
+	if dive_theme == "cave":
+		for attempt in 8:
+			if not _chosen["C"]["variant"].get("no_hang", false):
+				break
+			var cidx := _rng.randi_range(0, MapDataRes.ZONE_VARIANTS["C"].size() - 1)
+			_chosen["C"] = {"index": cidx, "variant": MapDataRes.ZONE_VARIANTS["C"][cidx]}
 	# 沉船遗址：按种子激活变体锚点（0~2 艘，合法性由变体数据校验保证）；
 	# 沉船主题保证至少一艘（幽灵船长需要触发点）
 	_wrecks = WreckGenRes.generate(_rng, _chosen)

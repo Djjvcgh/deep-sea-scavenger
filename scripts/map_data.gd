@@ -149,6 +149,7 @@ const ZONE_VARIANTS := {
 		},
 		{
 			"name": "石柱迷宫",
+			"no_hang": true,
 			"solids": [[3690, 620, 70, 200, "rock"], [3900, 520, 60, 180, "rock"],
 				[4150, 560, 80, 240, "rock"], [4400, 540, 70, 160, "rock"],
 				[4650, 640, 220, 160, "rock"]],
@@ -158,6 +159,7 @@ const ZONE_VARIANTS := {
 		},
 		{
 			"name": "深渊窄廊",
+			"no_hang": true,
 			"solids": [[3650, 520, 140, 240, "rock"], [3900, 600, 120, 160, "rock"],
 				[4200, 520, 90, 240, "rock"]],
 			"chests": [Vector2(3520, 880), Vector2(3900, 880), Vector2(4170, 880),

@@ -21,7 +21,7 @@ static func generate(rng: RandomNumberGenerator, chosen: Dictionary, wreck_rects
 	for w in wreck_rects:
 		placed_rects.append(w)
 	if force_kind != "":
-		var forced := _place_kind(rng, chosen, force_kind, placed_rects)
+		var forced := _place_forced(rng, chosen, force_kind, placed_rects)
 		if not forced.is_empty():
 			out.append(forced)
 			placed_rects.append_array(forced["rects"])
@@ -45,10 +45,10 @@ static func _place_one(rng: RandomNumberGenerator, chosen: Dictionary,
 
 
 static func _place_kind(rng: RandomNumberGenerator, chosen: Dictionary, kind: String,
-		placed_rects: Array) -> Dictionary:
+		placed_rects: Array, attempts := 14) -> Dictionary:
 	var mode: String = MapDataRes.CAVE_TEMPLATES[kind]["mode"]
 	var tpl: Dictionary = MapDataRes.CAVE_TEMPLATES[kind]
-	for attempt in 14:
+	for attempt in attempts:
 		var anchor: Vector2
 		var solids: Array
 		var chest_spots: Array
@@ -71,14 +71,59 @@ static func _place_kind(rng: RandomNumberGenerator, chosen: Dictionary, kind: St
 		var rects := _world_rects(tpl, anchor)
 		if not _placement_ok(rects, anchor, tpl, solids, chest_spots, patrols, placed_rects):
 			continue
-		var cave := {
-			"kind": kind, "mode": mode, "zone": zone, "anchor": anchor, "rects": rects,
-			"spots": [], "interior": WreckGenRes._offset_rect(tpl["interior"], anchor),
-		}
-		for s in tpl["spots"]:
-			cave["spots"].append(anchor + s)
-		return cave
+		return _make_cave(kind, mode, zone, anchor)
 	return {}
+
+
+## Boss 潜伏点保底：随机尝试保持位置多样性，失败后确定性扫掠——只要存在合法位置就必放。
+static func _place_forced(rng: RandomNumberGenerator, chosen: Dictionary, kind: String,
+		placed_rects: Array) -> Dictionary:
+	var forced := _place_kind(rng, chosen, kind, placed_rects, 24)
+	if forced.is_empty() and kind == "danger":
+		forced = _place_kind(rng, chosen, "hang_danger", placed_rects, 24)
+	if forced.is_empty():
+		forced = _sweep_place(chosen, kind, placed_rects)
+	if forced.is_empty() and kind == "danger":
+		forced = _sweep_place(chosen, "hang_danger", placed_rects)
+	return forced
+
+
+## 按固定步长扫掠全部候选区间，返回第一个合法位置（确定性）。
+static func _sweep_place(chosen: Dictionary, kind: String, placed_rects: Array) -> Dictionary:
+	var tpl: Dictionary = MapDataRes.CAVE_TEMPLATES[kind]
+	var ranges: Array = []
+	if tpl["mode"] == "hang":
+		ranges.append(["C", MapDataRes.HANG_X_RANGE, MapDataRes.HANG_SURFACE_Y])
+	else:
+		ranges.append(["B", MapDataRes.FLOOR_CAVE_ZONES["B"]["x_range"],
+			MapDataRes.FLOOR_CAVE_ZONES["B"]["floor_y"]])
+		ranges.append(["A", MapDataRes.FLOOR_CAVE_ZONES["A"]["x_range"],
+			MapDataRes.FLOOR_CAVE_ZONES["A"]["floor_y"]])
+	for r in ranges:
+		var zone: String = r[0]
+		var solids: Array = MapDataRes.variant_solids(zone, chosen[zone]["index"])
+		var chest_spots: Array = chosen[zone]["variant"]["chests"]
+		var patrols: Array = chosen[zone]["variant"]["patrols"]
+		var x: float = r[1][0]
+		while x <= float(r[1][1]):
+			var anchor := Vector2(x, float(r[2]))
+			if _placement_ok(_world_rects(tpl, anchor), anchor, tpl, solids,
+					chest_spots, patrols, placed_rects):
+				return _make_cave(kind, String(tpl["mode"]), zone, anchor)
+			x += 20.0
+	return {}
+
+
+static func _make_cave(kind: String, mode: String, zone: String, anchor: Vector2) -> Dictionary:
+	var tpl: Dictionary = MapDataRes.CAVE_TEMPLATES[kind]
+	var cave := {
+		"kind": kind, "mode": mode, "zone": zone, "anchor": anchor,
+		"rects": _world_rects(tpl, anchor), "spots": [],
+		"interior": WreckGenRes._offset_rect(tpl["interior"], anchor),
+	}
+	for s in tpl["spots"]:
+		cave["spots"].append(anchor + s)
+	return cave
 
 
 static func _weighted_mode(rng: RandomNumberGenerator) -> String:
@@ -113,13 +158,26 @@ static func _world_rects(tpl: Dictionary, anchor: Vector2) -> Array:
 
 static func _placement_ok(rects: Array, anchor: Vector2, tpl: Dictionary, solids: Array,
 		chest_spots: Array, patrols: Array, placed_rects: Array) -> bool:
+	# 腔体内部必须完全敞开：实体与已放结构不得伸进洞内（内缩 6px 容许墙面贴合）
+	var interior_world: Rect2 = WreckGenRes._offset_rect(tpl["interior"], anchor).grow(-6.0)
+	for r in solids:
+		if r[4] == "sand":
+			continue
+		var srect0 := Rect2(r[0], r[1], r[2], r[3])
+		if tpl["mode"] == "hang" and srect0.end.y <= anchor.y + 2.0:
+			continue
+		if srect0.intersects(interior_world):
+			return false
+	for other in placed_rects:
+		if (other as Rect2).intersects(interior_world):
+			return false
 	for wr in rects:
-		# 1) 与已有实体保持间隙；锚点依附面（海床 sand / 悬洞挂面上方的岩体）除外
+		# 1) 与已有实体保持间隙；依附面除外（海床 sand / 悬洞挂面上方的岩体）
 		for r in solids:
 			if r[4] == "sand":
 				continue
 			var srect := Rect2(r[0], r[1], r[2], r[3])
-			if srect.end.y <= anchor.y + 2.0:
+			if tpl["mode"] == "hang" and srect.end.y <= anchor.y + 2.0:
 				continue
 			if (wr as Rect2).intersects(srect.grow(CLEARANCE)):
 				return false
