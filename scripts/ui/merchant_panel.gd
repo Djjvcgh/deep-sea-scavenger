@@ -1,5 +1,5 @@
 extends CanvasLayer
-## 神秘商人界面：出售宝物 / 购买物资。交易额度不足时禁止购买。
+## 神秘商人界面：按品质出售宝物 / 购买物资 / 材料回售（物物交换，8折回收）。
 
 const ItemDBRes := preload("res://scripts/item_db.gd")
 
@@ -26,7 +26,7 @@ func _on_state_changed(_arg: Variant = null) -> void:
 
 func _build() -> void:
 	add_child(UICommon.dim_overlay())
-	var popup := UICommon.popup_panel(760.0)
+	var popup := UICommon.popup_panel(780.0)
 	add_child(popup)
 	var panel: PanelContainer = popup.get_meta("panel")
 	var box := VBoxContainer.new()
@@ -48,7 +48,7 @@ func _build() -> void:
 
 	var left := VBoxContainer.new()
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.size_flags_stretch_ratio = 1.2
+	left.size_flags_stretch_ratio = 1.25
 	cols.add_child(left)
 	left.add_child(UICommon.label("出售宝物", 20, UICommon.CYAN))
 	_sell_box = VBoxContainer.new()
@@ -58,10 +58,27 @@ func _build() -> void:
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(right)
-	right.add_child(UICommon.label("购买物资（用于造船）", 20, UICommon.CYAN))
+	right.add_child(UICommon.label("购买物资", 20, UICommon.CYAN))
 	_buy_box = VBoxContainer.new()
 	_buy_box.add_theme_constant_override("separation", 6)
 	right.add_child(_buy_box)
+	right.add_child(UICommon.vspace(6))
+	right.add_child(UICommon.label("回售材料（8折回收）", 17, UICommon.CYAN))
+	var back_box := VBoxContainer.new()
+	back_box.add_theme_constant_override("separation", 4)
+	right.add_child(back_box)
+	for id in ItemDBRes.MATERIALS:
+		var m: Dictionary = ItemDBRes.MATERIALS[id]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var label := UICommon.label("%s → +%d 额度" % [m["name"], GameState.sell_material_gain(id)],
+			16, UICommon.DIM)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(label)
+		var sell := UICommon.button("回售1", 15)
+		sell.pressed.connect(_sell_mat.bind(id))
+		row.add_child(sell)
+		back_box.add_child(row)
 
 	_flash_label = UICommon.label(" ", 18, UICommon.GOOD)
 	box.add_child(_flash_label)
@@ -88,25 +105,26 @@ func _refresh() -> void:
 
 	for c in _sell_box.get_children():
 		c.queue_free()
-	var counted := {}
-	for id in GameState.island_stock:
-		counted[id] = counted.get(id, 0) + 1
-	if counted.is_empty():
+	var groups: Dictionary = GameState.group_entries(GameState.island_stock)
+	if groups.is_empty():
 		_sell_box.add_child(UICommon.label("暂无可出售宝物 —— 去海底搜寻吧", 16, UICommon.DIM))
-	for id in counted:
-		var info: Dictionary = ItemDBRes.TREASURES[id]
-		var n: int = counted[id]
+	for key in groups:
+		var g: Dictionary = groups[key]
+		var q: Dictionary = ItemDBRes.QUALITIES[g["quality"]]
+		var info: Dictionary = ItemDBRes.TREASURES[g["id"]]
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		var name_label := UICommon.label("%s ×%d" % [info["name"], n], 18)
+		var name_label := UICommon.label("%s·%s ×%d" % [q["name"], info["name"], g["count"]],
+			18, q["color"])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_label)
-		row.add_child(UICommon.label("单价%d · 共%d" % [info["value"], info["value"] * n], 15, UICommon.DIM))
+		row.add_child(UICommon.label("单价%d · 共%d" % [g["value"], g["value"] * g["count"]],
+			15, UICommon.DIM))
 		var one := UICommon.button("出售1", 15)
-		one.pressed.connect(_sell_one.bind(id))
+		one.pressed.connect(_sell_one.bind(g["id"], g["quality"]))
 		row.add_child(one)
 		var all_btn := UICommon.button("全部", 15)
-		all_btn.pressed.connect(_sell_all.bind(id))
+		all_btn.pressed.connect(_sell_group.bind(g["id"], g["quality"]))
 		row.add_child(all_btn)
 		_sell_box.add_child(row)
 
@@ -127,25 +145,55 @@ func _refresh() -> void:
 		_buy_box.add_child(row)
 
 
-func _sell_one(id: String) -> void:
-	var info: Dictionary = ItemDBRes.TREASURES[id]
-	if GameState.sell_one(id):
-		_flash("出售 %s +%d" % [info["name"], info["value"]])
+func _find_index(id: String, quality: String) -> int:
+	for i in GameState.island_stock.size():
+		var e: Dictionary = GameState.island_stock[i]
+		if e["id"] == id and e["quality"] == quality:
+			return i
+	return -1
+
+
+func _sell_one(id: String, quality: String) -> void:
+	var idx := _find_index(id, quality)
+	if idx < 0:
+		return
+	var gain := GameState.value_of(GameState.island_stock[idx])
+	if GameState.sell_one(idx):
+		_flash("出售 %s +%d" % [ItemDBRes.TREASURES[id]["name"], gain])
 		Sfx.play("sell")
 
 
-func _sell_all(id: String) -> void:
-	var info: Dictionary = ItemDBRes.TREASURES[id]
-	var n: int = GameState.sell_all_of(id)
-	if n > 0:
-		_flash("出售 %s×%d +%d" % [info["name"], n, info["value"] * n])
-		Sfx.play("sell")
+func _sell_group(id: String, quality: String) -> void:
+	var kept: Array = []
+	var total := 0
+	var n := 0
+	for e in GameState.island_stock:
+		if e["id"] == id and e["quality"] == quality:
+			total += GameState.value_of(e)
+			n += 1
+		else:
+			kept.append(e)
+	if n == 0:
+		return
+	GameState.island_stock = kept
+	GameState.credits += total
+	GameState.island_stock_changed.emit()
+	GameState.credits_changed.emit(GameState.credits)
+	_flash("出售 %s ×%d +%d" % [ItemDBRes.TREASURES[id]["name"], n, total])
+	Sfx.play("sell")
 
 
 func _buy_mat(id: String) -> void:
 	var m: Dictionary = ItemDBRes.MATERIALS[id]
 	if GameState.buy_material(id):
 		_flash("购入 %s ×1（-%d）" % [m["name"], m["price"]])
+		Sfx.play("sell")
+
+
+func _sell_mat(id: String) -> void:
+	var m: Dictionary = ItemDBRes.MATERIALS[id]
+	if GameState.sell_material(id):
+		_flash("回售 %s ×1（+%d）" % [m["name"], GameState.sell_material_gain(id)])
 		Sfx.play("sell")
 
 

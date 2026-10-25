@@ -12,6 +12,7 @@ var _stamina_bar: ProgressBar
 var _bag_label: Label
 var _value_label: Label
 var _zone_label: Label
+var _time_label: Label
 var _warning_label: Label
 var _prompt_label: Label
 var _search_bar: ProgressBar
@@ -91,7 +92,7 @@ func _build() -> void:
 	_value_label = UICommon.label("本次估值 0", 20, UICommon.GOLD)
 	tr.add_child(_value_label)
 
-	# 顶部中央：区域名
+	# 顶部中央：区域名 + 撤离窗口倒计时
 	_zone_label = UICommon.label("", 16, UICommon.DIM)
 	_zone_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_zone_label.anchor_left = 0.5
@@ -101,6 +102,16 @@ func _build() -> void:
 	_zone_label.offset_top = 12
 	_zone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_zone_label)
+
+	_time_label = UICommon.label("", 18, UICommon.DIM)
+	_time_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_time_label.anchor_left = 0.5
+	_time_label.anchor_right = 0.5
+	_time_label.offset_left = -150
+	_time_label.offset_right = 150
+	_time_label.offset_top = 36
+	_time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_time_label)
 
 	# 中央大警告
 	_warning_label = UICommon.label("", 26, UICommon.DANGER)
@@ -189,6 +200,22 @@ func _process(delta: float) -> void:
 	if dive != null and is_instance_valid(player):
 		_zone_label.text = dive.get_zone_label()
 
+	# 撤离窗口倒计时
+	if dive != null and not dive.ended:
+		var t: float = maxf(0.0, dive.time_left)
+		_time_label.text = "撤离窗口 %d:%02d" % [int(t) / 60, int(t) % 60]
+		if t < 30.0:
+			_time_label.add_theme_color_override("font_color", UICommon.DANGER)
+			_time_label.modulate.a = 0.6 + 0.4 * sin(_t * 10.0)
+		elif t < 120.0:
+			_time_label.add_theme_color_override("font_color", UICommon.ORANGE)
+			_time_label.modulate.a = 1.0
+		else:
+			_time_label.add_theme_color_override("font_color", UICommon.DIM)
+			_time_label.modulate.a = 1.0
+	else:
+		_time_label.text = ""
+
 	# 交互与搜索
 	var searching: bool = player.is_searching() and player.active_chest != null \
 		and is_instance_valid(player.active_chest)
@@ -198,13 +225,7 @@ func _process(delta: float) -> void:
 		_search_bar.value = player.active_chest.search_ratio() * 100.0
 	elif player.focus_target != null:
 		if player.focus_target.has_method("begin_search"):
-			if player.focus_target.can_search(player):
-				_prompt_label.text = "长按 E 搜索：%s（%d 格 · 估值 %d）" \
-					% [player.focus_target.interact_prompt(),
-					int(ItemDB.TREASURES[player.focus_target.treasure_id]["slots"]),
-					int(ItemDB.TREASURES[player.focus_target.treasure_id]["value"])]
-			else:
-				_prompt_label.text = player.focus_target.blocked_reason()
+			_prompt_label.text = "长按 E 搜索：%s" % player.focus_target.interact_prompt()
 		else:
 			_prompt_label.text = "按 E：%s" % player.focus_target.interact_prompt()
 		_search_bar.visible = false

@@ -52,7 +52,8 @@ func _build() -> void:
 	box.add_child(_back_btn)
 
 
-func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0, seed_id := -1) -> void:
+func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0,
+		seed_id := -1, fail_reason := "") -> void:
 	visible = true
 	for c in _list_box.get_children():
 		c.queue_free()
@@ -71,25 +72,29 @@ func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0, se
 	else:
 		_title.text = "潜水失败"
 		_title.add_theme_color_override("font_color", UICommon.DANGER)
-		_subtitle.text = "体力耗尽或生命归零，失去了本次携带的全部宝物。已储存的额度、材料与造船进度不受影响。" + time_text
-		_total_label.text = "损失估值：%d" % total_value
+		var drop_hint := ""
+		if not items.is_empty():
+			drop_hint = "本次携带的宝物散落在海床，下次下潜可以尝试找回。"
+		_subtitle.text = "%s。%s已储存的额度、材料与造船进度不受影响。%s" \
+			% [fail_reason if fail_reason != "" else "体力耗尽或生命归零", drop_hint, time_text]
+		_total_label.text = "散落估值：%d" % total_value
 		_total_label.add_theme_color_override("font_color", UICommon.DANGER)
 
 	if items.is_empty():
 		_list_box.add_child(UICommon.label("（没有携带任何宝物）", 17, UICommon.DIM))
 		return
-	var counted := {}
-	for id in items:
-		counted[id] = counted.get(id, 0) + 1
-	for id in counted:
-		var info: Dictionary = ItemDBRes.TREASURES[id]
-		var n: int = counted[id]
+	var groups: Dictionary = GameState.group_entries(items)
+	for key in groups:
+		var g: Dictionary = groups[key]
+		var q: Dictionary = ItemDBRes.QUALITIES[g["quality"]]
+		var info: Dictionary = ItemDBRes.TREASURES[g["id"]]
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
-		var name_label := UICommon.label("%s ×%d" % [info["name"], n], 19)
+		var name_label := UICommon.label("%s·%s ×%d" % [q["name"], info["name"], g["count"]],
+			19, q["color"])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_label)
-		row.add_child(UICommon.label("估值 %d" % (info["value"] * n), 18, UICommon.DIM))
+		row.add_child(UICommon.label("估值 %d" % (g["value"] * g["count"]), 18, UICommon.DIM))
 		_list_box.add_child(row)
 
 

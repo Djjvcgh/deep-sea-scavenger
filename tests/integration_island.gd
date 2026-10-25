@@ -28,7 +28,7 @@ func _run() -> void:
 	var gs = root.get_node("GameState")
 	gs.reset_defaults()
 	gs.credits = 50
-	gs.island_stock = ["bronze_coins", "silver_platter"]
+	gs.island_stock = [{"id": "gold_cup", "quality": "fine"}]
 
 	print("[荒岛：交互与交易]")
 	change_scene_to_file("res://scenes/island.tscn")
@@ -90,10 +90,23 @@ func _run() -> void:
 
 	# 出售与存档
 	var credits_before: int = gs.credits
-	gs.sell_one("bronze_coins")
-	_check(gs.credits == credits_before + 25, "出售宝物获得正确额度")
+	gs.sell_one(0)
+	_check(gs.credits == credits_before + 196, "出售精良金杯获得正确额度")
 	await create_timer(0.2).timeout
 	_check(FileAccess.file_exists("user://deepsea_scavenger_save.json"), "交易后自动存档")
+
+	# 材料回售（物物交换）
+	gs.materials["wood"] = 1
+	var credits_before_mat: int = gs.credits
+	island.merchant_panel._sell_mat("wood")
+	_check(gs.credits == credits_before_mat + 80, "材料回售 8 折（木材 +80）")
+
+	# 背包打造（工作台，材料来自海底）
+	gs.materials["leather"] = 2
+	_check(gs.craft_bag() and gs.bag_capacity() == 10, "工作台打造皮革背包（10格）")
+	island.upgrades_panel.open()
+	await create_timer(0.2).timeout
+	island.upgrades_panel.close()
 
 	# 下潜点进入海底
 	player.global_position = Vector2(150, 500)

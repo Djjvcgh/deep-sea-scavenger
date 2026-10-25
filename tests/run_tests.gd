@@ -75,20 +75,30 @@ func _list_scripts(dir_path: String) -> Array:
 func _test_item_db() -> int:
 	print("[数据表]")
 	var T = ItemDB.TREASURES
+	_check(ItemDB.QUALITIES["worn"]["mult"] == 0.6 and ItemDB.QUALITIES["standard"]["mult"] == 1.0
+		and ItemDB.QUALITIES["fine"]["mult"] == 1.4 and ItemDB.QUALITIES["pristine"]["mult"] == 2.0,
+		"品质倍率 0.6/1.0/1.4/2.0")
+	_check(T["old_coin"]["value"] == 10 and T["pearl"]["value"] == 18, "新低阶宝物 旧硬币10/珍珠18")
 	_check(T["bronze_coins"]["value"] == 25 and T["bronze_coins"]["slots"] == 1
 		and is_equal_approx(T["bronze_coins"]["search_time"], 1.5), "古铜币包 25/1格/1.5s")
-	_check(T["silver_platter"]["value"] == 70 and T["silver_platter"]["slots"] == 2
-		and is_equal_approx(T["silver_platter"]["search_time"], 3.0), "银质餐盘 70/2格/3s")
-	_check(T["gold_cup"]["value"] == 140 and T["gold_cup"]["slots"] == 3
-		and is_equal_approx(T["gold_cup"]["search_time"], 5.0), "沉船金杯 140/3格/5s")
-	_check(T["cursed_idol"]["value"] == 280 and T["cursed_idol"]["slots"] == 5
-		and is_equal_approx(T["cursed_idol"]["search_time"], 7.0), "诅咒神像 280/5格/7s")
+	_check(T["silver_platter"]["value"] == 70 and T["silver_platter"]["slots"] == 2, "银质餐盘 70/2格")
+	_check(T["gold_cup"]["value"] == 140 and T["gold_cup"]["slots"] == 3, "沉船金杯 140/3格")
+	_check(T["cursed_idol"]["value"] == 280 and T["cursed_idol"]["slots"] == 5, "诅咒神像 280/5格")
 	_check(ItemDB.MATERIALS["wood"]["price"] == 100
 		and ItemDB.MATERIALS["iron"]["price"] == 180
-		and ItemDB.MATERIALS["canvas"]["price"] == 160, "物资价格 100/180/160")
-	_check(ItemDB.UPGRADES["bag"]["cost"] == 180
-		and ItemDB.UPGRADES["fins"]["cost"] == 160
-		and ItemDB.UPGRADES["amulet"]["cost"] == 220, "升级费用 180/160/220")
+		and ItemDB.MATERIALS["canvas"]["price"] == 160
+		and ItemDB.MATERIALS["leather"]["price"] == 120, "物资价格 100/180/160/120")
+	_check(is_equal_approx(ItemDB.MATERIAL_SELL_RATE, 0.8), "材料回售 8 折")
+	_check(ItemDB.BAG_TIERS.size() == 3 and ItemDB.BAG_TIERS[0]["capacity"] == 8
+		and ItemDB.BAG_TIERS[1]["capacity"] == 10 and ItemDB.BAG_TIERS[2]["capacity"] == 12,
+		"背包档位 8/10/12")
+	_check(ItemDB.CONTAINERS["chest"]["search_time"] == 3.0
+		and ItemDB.CONTAINERS["shell"]["search_time"] == 1.2
+		and ItemDB.CONTAINERS["trash_bag"]["search_time"] == 2.0
+		and ItemDB.CONTAINERS["cache"]["search_time"] == 2.0, "容器搜索时长定义完整")
+	_check(ItemDB.UPGRADES["fins"]["cost"] == 160
+		and ItemDB.UPGRADES["amulet"]["cost"] == 220
+		and not ItemDB.UPGRADES.has("bag"), "升级表：脚蹼/护符（背包已改为打造）")
 	_check(ItemDB.BOAT_REQUIREMENT["wood"] == 2 and ItemDB.BOAT_REQUIREMENT["iron"] == 1
 		and ItemDB.BOAT_REQUIREMENT["canvas"] == 1, "造船需求 木2/铁1/帆1")
 	# 各区域权重合计为1
@@ -125,70 +135,96 @@ func _test_game_state() -> int:
 	var gs = root.get_node("GameState")
 	gs.reset_defaults()
 
-	# 背包容量
-	_check(gs.bag_capacity() == 8, "默认背包8格")
-	gs.upgrades["bag"] = true
-	_check(gs.bag_capacity() == 12, "扩容后背包12格")
-	gs.upgrades["bag"] = false
+	# 物品条目与品质估值
+	_check(gs.add_dive_item("gold_cup", "worn") and gs.value_of(gs.dive_bag[0]) == 84,
+		"破损金杯估值 84")
+	_check(gs.add_dive_item("silver_platter", "standard") and gs.value_of(gs.dive_bag[1]) == 70,
+		"标准银盘估值 70")
+	_check(gs.add_dive_item("silver_platter", "fine") and gs.value_of(gs.dive_bag[2]) == 98,
+		"精良银盘估值 98")
+	_check(gs.bag_used_slots() == 7, "占格按类型计算（3+2+2）")
+	_check(gs.add_dive_item("pearl") and gs.bag_used_slots() == 8, "第4件恰好装满8格")
+	_check(not gs.add_dive_item("old_coin"), "8格满后拒绝拾取")
 
-	# 拾取与容量
-	_check(gs.add_dive_item("gold_cup"), "可以拾取金杯(3格)")
-	_check(gs.add_dive_item("gold_cup"), "第二个金杯(共6格)")
-	_check(not gs.add_dive_item("gold_cup"), "8格装不下第三个金杯")
-	_check(gs.bag_used_slots() == 6, "占用6格")
+	# 背包档位与打造
+	gs.reset_defaults()
+	_check(gs.bag_capacity() == 8, "默认背包 8 格")
+	gs.materials["leather"] = 1
+	_check(not gs.craft_bag(), "材料不足不能打造")
+	gs.materials["leather"] = 2
+	_check(gs.craft_bag() and gs.bag_capacity() == 10, "皮革背包打造成功（10格）")
+	gs.materials["leather"] = 2
+	gs.materials["iron"] = 1
+	_check(gs.craft_bag() and gs.bag_capacity() == 12, "加固背包打造成功（12格）")
+	_check(not gs.craft_bag(), "已是最高档不能再打造")
+
+	# 容量与负重（12格档位）
+	_check(gs.add_dive_item("gold_cup") and gs.add_dive_item("gold_cup")
+		and gs.add_dive_item("gold_cup") and gs.add_dive_item("silver_platter"), "装下 3金杯+1银盘")
+	_check(gs.bag_used_slots() == 11, "占用 11 格")
+	_check(not gs.add_dive_item("silver_platter"), "12格装不下第5件")
 	_check(is_equal_approx(gs.weight_speed_mult(), 0.9), "负重速度×0.9")
 	_check(is_equal_approx(gs.weight_drain_mult(), 1.2), "负重消耗×1.2")
-	_check(gs.remove_dive_item("gold_cup"), "丢弃金杯成功")
-	_check(gs.bag_used_slots() == 3 and not is_equal_approx(gs.weight_speed_mult(), 0.9),
-		"丢弃后负重解除")
-	_check(gs.add_dive_item("cursed_idol"), "拾取诅咒神像(5格,共8格)")
-	_check(gs.has_curse_idol(), "神像诅咒生效")
-	_check(gs.remove_dive_item("cursed_idol"), "丢弃神像成功")
-	_check(not gs.has_curse_idol(), "丢弃后诅咒解除")
-	_check(not gs.add_dive_item("not_exist"), "无效宝物id被拒绝")
-	_check(is_equal_approx(gs.dive_total_value(), 140.0), "临时背包估值 = 140")
 
-	# 升级
-	gs.credits = 170
-	_check(not gs.buy_upgrade("bag"), "额度不足(170<180)不能购买升级")
-	gs.credits = 200
-	_check(gs.buy_upgrade("bag"), "购买扩容背包")
-	_check(not gs.buy_upgrade("bag"), "已升级不能重复购买")
-	_check(gs.credits == 20, "扣费正确 200-180=20")
-	_check(is_equal_approx(gs.max_stamina(), 100.0), "护符未买时体力上限100")
-	gs.upgrades = {"bag": false, "fins": false, "amulet": false}
+	# 诅咒
+	gs.reset_defaults()
+	_check(not gs.has_curse_idol(), "初始无诅咒")
+	gs.add_dive_item("cursed_idol", "fine")
+	_check(gs.has_curse_idol(), "携带神像触发诅咒")
 
-	# 交易
+	# 失败掉落与找回
+	gs.reset_defaults()
+	gs.add_dive_item("gold_cup", "pristine")
+	gs.add_dive_item("pearl")
+	gs.end_dive(false, Vector2(4000, 800))
+	_check(gs.dive_bag.is_empty(), "失败后临时背包清空")
+	_check(gs.lost_cache["items"].size() == 2 and gs.lost_cache["x"] == 4000.0, "战利品进入遗落物缓存")
+	gs.add_dive_item("silver_platter")
+	gs.end_dive(false, Vector2(4500, 850))
+	_check(gs.lost_cache["items"].size() == 3 and gs.lost_cache["x"] == 4500.0,
+		"再次失败合并到新掉落点")
+	var taken: Dictionary = gs.take_from_cache(0)
+	_check(taken["id"] == "gold_cup" and taken["quality"] == "pristine", "从缓存取回完好金杯")
+	_check(gs.lost_cache["items"].size() == 2, "缓存剩余 2 件")
+	gs.restore_to_cache([taken])
+	_check(gs.lost_cache["items"].size() == 3, "未带走条目放回缓存")
+	gs.end_dive(true)
+	_check(gs.lost_cache["items"].size() == 3, "成功撤离不影响遗落物缓存")
+
+	# 交易（按品质）
+	gs.reset_defaults()
 	gs.credits = 0
-	gs.island_stock = ["bronze_coins", "bronze_coins", "silver_platter"]
-	_check(not gs.sell_one("gold_cup"), "库存没有该宝物时不能出售")
-	_check(gs.sell_one("bronze_coins") and gs.credits == 25, "出售1件+25")
-	_check(gs.sell_all_of("bronze_coins") == 1 and gs.credits == 50, "全部出售剩余铜币+25")
-	_check(gs.sell_all_of("bronze_coins") == 0, "无库存时出售返回0")
-	_check(not gs.buy_material("wood"), "额度不足不能购买木材")
-	gs.credits = 100
-	_check(gs.buy_material("wood") and gs.materials["wood"] == 1 and gs.credits == 0,
-		"购买木材扣费100")
+	gs.island_stock = [
+		{"id": "gold_cup", "quality": "fine"}, {"id": "gold_cup", "quality": "worn"},
+		{"id": "pearl", "quality": "standard"}]
+	_check(gs.sell_one(0) and gs.credits == 196, "按下标出售精良金杯 +196")
+	_check(gs.sell_all_of("gold_cup") == 84, "按类型全部出售（剩余破损金杯）+84")
+	_check(gs.sell_all_of("gold_cup") == 0 and gs.credits == 280, "无库存时出售返回 0")
+	_check(gs.island_stock.size() == 1, "库存只剩珍珠")
+	_check(not gs.sell_one(5), "非法下标拒绝")
+
+	# 材料回售
+	gs.materials["leather"] = 2
+	_check(gs.sell_material("leather") and gs.credits == 280 + 96, "回售皮革 +96（8折）")
+	_check(gs.materials["leather"] == 1, "回售后材料减少")
+	gs.materials["leather"] = 0
+	_check(not gs.sell_material("leather"), "无材料不能回售")
 	_check(gs.credits >= 0, "交易额度永不为负")
 
+	# 升级（脚蹼/护符）
+	gs.credits = 160
+	_check(gs.buy_upgrade("fins") and is_equal_approx(gs.speed_mult(), 1.2), "购买脚蹼生效")
+	_check(not gs.buy_upgrade("fins"), "已升级不能重复购买")
+	_check(gs.credits == 0, "扣费正确")
+
 	# 造船
-	gs.materials = {"wood": 3, "iron": 1, "canvas": 1}
+	gs.reset_defaults()
+	gs.materials = {"wood": 3, "iron": 1, "canvas": 1, "leather": 0}
 	_check(gs.invest_material("wood", 5) == 2, "投入木材最多按需求2")
 	_check(gs.invest_material("iron", 1) == 1 and gs.invest_material("canvas", 1) == 1,
 		"投入铁件与帆布")
-	_check(gs.boat_completed, "材料齐全后造船完成")
-	_check(is_equal_approx(gs.boat_progress(), 1.0), "造船进度=1")
+	_check(gs.boat_completed and is_equal_approx(gs.boat_progress(), 1.0), "材料齐全造船完成")
 	_check(gs.invest_material("wood", 1) == 0, "造船完成后不能再投入")
-
-	# 下潜结算
-	gs.reset_defaults()
-	gs.island_stock = []
-	gs.add_dive_item("bronze_coins")
-	gs.end_dive(false)
-	_check(gs.island_stock.is_empty() and gs.dive_bag.is_empty(), "失败丢失全部临时宝物")
-	gs.add_dive_item("silver_platter")
-	gs.end_dive(true)
-	_check(gs.island_stock == ["silver_platter"], "成功撤离宝物转入岛上库存")
 	return 0
 
 
@@ -203,32 +239,50 @@ func _test_save_roundtrip() -> int:
 	_check(sm.load_game().is_empty(), "无存档时返回空")
 	gs.reset_defaults()
 	gs.credits = 333
-	gs.island_stock = ["gold_cup", "cursed_idol"]
-	gs.materials = {"wood": 2, "iron": 0, "canvas": 1}
-	gs.upgrades = {"bag": true, "fins": false, "amulet": true}
+	gs.island_stock = [{"id": "gold_cup", "quality": "fine"}, {"id": "pearl", "quality": "worn"}]
+	gs.materials = {"wood": 2, "iron": 0, "canvas": 1, "leather": 1}
+	gs.bag_tier = 1
+	gs.upgrades = {"fins": false, "amulet": true}
 	gs.boat_invested = {"wood": 1, "iron": 0, "canvas": 0}
+	gs.lost_cache = {"x": 4200.0, "y": 860.0, "items": [{"id": "silver_platter", "quality": "standard"}]}
 	_check(sm.save_game(gs.serialize()), "存档写入成功")
 
 	gs.reset_defaults()
 	gs.apply_save(sm.load_game())
-	_check(gs.credits == 333 and gs.island_stock == ["gold_cup", "cursed_idol"],
-		"额度与库存读档正确")
-	_check(gs.upgrades["bag"] and gs.upgrades["amulet"] and not gs.upgrades["fins"],
-		"升级状态读档正确")
-	_check(gs.materials["wood"] == 2 and gs.boat_invested["wood"] == 1, "材料与造船进度正确")
+	_check(gs.credits == 333 and gs.island_stock.size() == 2
+		and gs.island_stock[0]["quality"] == "fine", "额度与库存（含品质）读档正确")
+	_check(gs.bag_tier == 1 and gs.bag_capacity() == 10, "背包档位读档正确")
+	_check(gs.upgrades["amulet"] and not gs.upgrades["fins"], "升级状态读档正确")
+	_check(gs.lost_cache["items"].size() == 1 and gs.lost_cache["x"] == 4200.0, "遗落物缓存读档正确")
 
-	# 损坏与缺字段
+	# v1 旧存档迁移：字符串物品 + 扩容背包升级
 	var path: String = sm.get("save_path")
 	var f := FileAccess.open(path, FileAccess.WRITE)
-	f.store_string("{{{不是json")
-	f.close()
-	_check(sm.load_game().is_empty(), "损坏存档按无存档处理")
-	f = FileAccess.open(path, FileAccess.WRITE)
-	f.store_string("{\"credits\": \"abc\", \"island_stock\": [\"bad_id\", \"gold_cup\"]}")
+	f.store_string(JSON.stringify({
+		"version": 1, "credits": 50,
+		"island_stock": ["gold_cup", "bad_id"],
+		"materials": {"wood": 1}, "upgrades": {"bag": true},
+		"boat_invested": {}, "boat_completed": false,
+	}))
 	f.close()
 	gs.reset_defaults()
 	gs.apply_save(sm.load_game())
-	_check(gs.credits == 0 and gs.island_stock == ["gold_cup"], "非法字段被安全忽略")
+	_check(gs.bag_tier == 2 and gs.bag_capacity() == 12, "v1 扩容升级迁移为背包档位2（12格）")
+	_check(gs.island_stock.size() == 1 and gs.island_stock[0] == {"id": "gold_cup", "quality": "standard"},
+		"v1 字符串物品迁移为标准品质，非法 id 被忽略")
+
+	# 损坏存档
+	var f2 := FileAccess.open(path, FileAccess.WRITE)
+	f2.store_string("{{{不是json")
+	f2.close()
+	_check(sm.load_game().is_empty(), "损坏存档按无存档处理")
+	var f3 := FileAccess.open(path, FileAccess.WRITE)
+	f3.store_string("{\"credits\": \"abc\", \"island_stock\": [\"bad_id\", {\"id\": \"gold_cup\"}]}")
+	f3.close()
+	gs.reset_defaults()
+	gs.apply_save(sm.load_game())
+	_check(gs.credits == 0 and gs.island_stock.size() == 1
+		and gs.island_stock[0]["quality"] == "standard", "非法字段被安全忽略")
 
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	return 0

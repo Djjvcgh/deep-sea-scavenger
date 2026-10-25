@@ -8,6 +8,7 @@ signal hurt
 signal died
 signal exhausted
 signal notice(text: String, color: Color)
+signal loot_collected(entries: Array, container: Area2D)
 
 enum Mode { SWIM, WALK }
 
@@ -28,7 +29,6 @@ var active_chest: Area2D = null    # 正在搜索的宝箱
 
 var _anim_t := 0.0
 var _flash_left := 0.0
-var _notice_cd := 0.0
 
 @onready var interact_area: Area2D = $InteractRange
 @onready var camera: Camera2D = $Camera2D
@@ -77,7 +77,6 @@ func _physics_process(delta: float) -> void:
 	_anim_t += delta
 	invincible_left = maxf(0.0, invincible_left - delta)
 	_flash_left = maxf(0.0, _flash_left - delta)
-	_notice_cd = maxf(0.0, _notice_cd - delta)
 	_animate()
 	if dead:
 		velocity = velocity.move_toward(Vector2(0, -26), 200.0 * delta)
@@ -159,13 +158,9 @@ func _update_interact() -> void:
 			_complete_loot()
 	elif not control_locked and holding and focus_target != null \
 			and focus_target.has_method("begin_search"):
-		if focus_target.can_search(self):
-			active_chest = focus_target
-			active_chest.begin_search()
-			control_locked = true
-		elif _notice_cd <= 0.0:
-			_notice_cd = 0.9
-			notice.emit(focus_target.blocked_reason(), UICommon.DANGER)
+		active_chest = focus_target
+		active_chest.begin_search()
+		control_locked = true
 
 	if active_chest == null and not control_locked and focus_target != null \
 			and focus_target.has_method("interact") \
@@ -180,20 +175,20 @@ func _cancel_search() -> void:
 	control_locked = false
 
 
+## 搜索完成：容器生成掉落并弹出拾取面板；面板关闭前保持移动锁定。
 func _complete_loot() -> void:
 	var chest := active_chest
-	_cancel_search()
+	active_chest = null
 	if chest == null or not is_instance_valid(chest):
+		control_locked = false
 		return
-	var id: String = chest.treasure_id
-	chest.mark_looted()
-	var info: Dictionary = ItemDB.TREASURES[id]
-	if not GameState.add_dive_item(id):
-		notice.emit("背包空间不足", UICommon.DANGER)
+	var entries: Array = chest.collect_loot()
+	if entries.is_empty():
+		control_locked = false
 		return
-	Sfx.play("rare_pickup" if info["rare"] else "pickup")
-	notice.emit("获得：%s（估值 %d）" % [info["name"], info["value"]],
-		UICommon.GOLD if info["rare"] else UICommon.CYAN)
+	loot_collected.emit(entries, chest)
+
+
 
 
 func is_searching() -> bool:

@@ -8,6 +8,7 @@ signal closed
 var _rows_box: VBoxContainer
 var _credits_label: Label
 var _flash_label: Label
+var _bag_box: VBoxContainer
 
 
 func _ready() -> void:
@@ -16,6 +17,8 @@ func _ready() -> void:
 	_build()
 	GameState.credits_changed.connect(_on_state_changed)
 	GameState.upgrades_changed.connect(_on_state_changed)
+	GameState.materials_changed.connect(_on_state_changed)
+	GameState.bag_tier_changed.connect(_on_state_changed)
 
 
 func _on_state_changed(_arg: Variant = null) -> void:
@@ -43,6 +46,12 @@ func _build() -> void:
 	_rows_box = VBoxContainer.new()
 	_rows_box.add_theme_constant_override("separation", 10)
 	box.add_child(_rows_box)
+
+	box.add_child(UICommon.vspace(4))
+	box.add_child(UICommon.label("背包打造（材料来自海底）", 20, UICommon.CYAN))
+	_bag_box = VBoxContainer.new()
+	_bag_box.add_theme_constant_override("separation", 6)
+	box.add_child(_bag_box)
 
 	_flash_label = UICommon.label(" ", 18, UICommon.GOOD)
 	box.add_child(_flash_label)
@@ -93,6 +102,47 @@ func _refresh() -> void:
 
 		inner.add_child(UICommon.label(u["desc"], 15, UICommon.DIM))
 		_rows_box.add_child(row)
+
+	_refresh_bag()
+
+
+func _refresh_bag() -> void:
+	for c in _bag_box.get_children():
+		c.queue_free()
+	var tier: int = GameState.bag_tier
+	var current: Dictionary = ItemDBRes.BAG_TIERS[tier]
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 10)
+	var cur := UICommon.label("当前：%s（%d 格）" % [current["name"], current["capacity"]], 17)
+	cur.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(cur)
+	if tier + 1 >= ItemDBRes.BAG_TIERS.size():
+		line.add_child(UICommon.label("已是最高级背包", 16, UICommon.GOOD))
+	else:
+		var next: Dictionary = ItemDBRes.BAG_TIERS[tier + 1]
+		var cost: Dictionary = next["cost"]
+		var parts: Array = []
+		var enough := true
+		for mat in cost:
+			var need := int(cost[mat])
+			var have := int(GameState.materials[mat])
+			if have < need:
+				enough = false
+			parts.append("%s %d/%d" % [ItemDBRes.MATERIALS[mat]["name"], have, need])
+		line.add_child(UICommon.label("%s（%d格）：" % [next["name"], next["capacity"]], 17))
+		line.add_child(UICommon.label(" / ".join(parts), 15,
+			UICommon.GOOD if enough else UICommon.DIM))
+		var craft := UICommon.button("打造", 16)
+		craft.disabled = not enough
+		craft.pressed.connect(_craft)
+		line.add_child(craft)
+	_bag_box.add_child(line)
+
+
+func _craft() -> void:
+	if GameState.craft_bag():
+		_flash("%s 打造完成！" % ItemDBRes.BAG_TIERS[GameState.bag_tier]["name"])
+		Sfx.play("build", -4.0)
 
 
 func _buy(id: String) -> void:

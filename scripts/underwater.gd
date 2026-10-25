@@ -11,10 +11,16 @@ const ChestScene := preload("res://scenes/treasure_chest.tscn")
 const SharkScene := preload("res://scenes/shark.tscn")
 const HudScene := preload("res://scenes/ui/hud.tscn")
 const InventoryScene := preload("res://scenes/ui/inventory_panel.tscn")
+const LootScene := preload("res://scenes/ui/loot_panel.tscn")
 const ResultsScene := preload("res://scenes/ui/results_panel.tscn")
 const PauseScene := preload("res://scenes/ui/pause_menu.tscn")
 
 const SPR := "res://assets/sprites/kenney_fish/"
+const ZONE_GLOWS := {
+	"A": Color(0.85, 0.9, 0.85, 0.6),
+	"B": Color(0.95, 0.78, 0.25, 0.6),
+	"C": Color(0.7, 0.4, 0.85, 0.6),
+}
 const FISH_COLORS := ["fish_blue", "fish_brown", "fish_green", "fish_grey",
 	"fish_orange", "fish_pink", "fish_red"]
 const SAND_TOPS := ["a", "b", "c", "d", "e", "f", "g", "h"]
@@ -31,12 +37,14 @@ const BG_FLORA := ["background_seaweed_a", "background_seaweed_b",
 var player: CharacterBody2D
 var hud: CanvasLayer
 var inventory_panel: CanvasLayer
+var loot_panel: CanvasLayer
 var results_panel: CanvasLayer
 var pause_menu: CanvasLayer
 
 var in_extraction := false
 var ended := false
 var dive_seed := 0
+var time_left := 0.0
 
 var _rng := RandomNumberGenerator.new()
 var _chosen := {}              # zone -> {"index": int, "variant": Dictionary}
@@ -56,18 +64,21 @@ func _ready() -> void:
 	GameState.start_dive()
 	player = $Player
 	_roll_layout()
+	time_left = BalanceRes.DIVE_TIME_LIMIT
 	_build_environment()
 	_build_terrain()
 	_build_extraction()
 	_spawn_chests()
+	_spawn_containers()
+	_spawn_cache()
 	_spawn_sharks()
 
 	player.reset_for_dive()
 	player.z_index = 5
 	player.global_position = MapDataRes.PLAYER_SPAWN
 	player.set_camera_limits(-120, -260, 5240, 1100)
-	player.exhausted.connect(_on_dive_failed)
-	player.died.connect(_on_dive_failed)
+	player.exhausted.connect(_on_dive_failed.bind("体力耗尽"))
+	player.died.connect(_on_dive_failed.bind("生命归零"))
 
 	hud = HudScene.instantiate()
 	add_child(hud)
@@ -77,11 +88,19 @@ func _ready() -> void:
 
 	inventory_panel = InventoryScene.instantiate()
 	add_child(inventory_panel)
+	loot_panel = LootScene.instantiate()
+	add_child(loot_panel)
+	player.loot_collected.connect(_on_loot_collected)
+	loot_panel.closed.connect(func() -> void: player.control_locked = false)
 	results_panel = ResultsScene.instantiate()
 	add_child(results_panel)
 	pause_menu = PauseScene.instantiate()
 	add_child(pause_menu)
 	pause_menu.setup(true)
+
+	if not GameState.lost_cache.is_empty():
+		var zone := MapDataRes.zone_at(float(GameState.lost_cache["x"]))
+		hud.spawn_notice("声呐检测到上次的遗落物（%s）" % MapDataRes.zone_name(zone), UICommon.CYAN)
 
 	Sfx.play_ambient("ambient_underwater")
 
@@ -114,6 +133,14 @@ func get_zone_label() -> String:
 func _input(event: InputEvent) -> void:
 	if ended:
 		return
+	if loot_panel.visible:
+		if event.is_action_pressed("interact"):
+			loot_panel.take_all_and_close()
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("pause"):
+			loot_panel.close()
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("inventory"):
 		inventory_panel.toggle()
 		get_viewport().set_input_as_handled()
@@ -122,11 +149,23 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if ended:
+		return
+	time_left -= delta
+	if time_left <= 0.0:
+		time_left = 0.0
+		_end_dive(false, "撤离窗口已关闭")
 		return
 	if in_extraction and not player.is_searching() and Input.is_action_just_pressed("interact"):
 		_end_dive(true)
+
+
+func _on_loot_collected(entries: Array, container: Area2D) -> void:
+	if entries.is_empty():
+		player.control_locked = false
+		return
+	loot_panel.open(entries, container)
 
 
 func any_shark_alerting() -> bool:
@@ -136,33 +175,34 @@ func any_shark_alerting() -> bool:
 	return false
 
 
-## 撤离成功或失败后结算。成功把临时宝物转入岛上库存；失败丢弃。
-func _end_dive(success: bool) -> void:
+## 撤离成功或失败后结算。成功把临时宝物转入岛上库存；失败掉落在原地（可找回）。
+func _end_dive(success: bool, fail_reason := "") -> void:
 	if ended:
 		return
 	ended = true
-	var items: Array = GameState.dive_bag.duplicate()
+	var items: Array = GameState.dive_bag.duplicate(true)
 	var total := GameState.dive_total_value()
 	var elapsed := (Time.get_ticks_msec() - GameState.dive_start_msec) / 1000.0
-	GameState.end_dive(success)
+	var drop_pos: Vector2 = player.global_position if player != null else Vector2.INF
+	GameState.end_dive(success, drop_pos)
 	SaveManager.save_game(GameState.serialize())
 	Sfx.stop_ambient()
 	Sfx.stop_tension()
 	Sfx.play("sell" if success else "fail")
 	get_tree().paused = true
-	results_panel.open(success, items, total, elapsed, dive_seed)
+	results_panel.open(success, items, total, elapsed, dive_seed, fail_reason)
 
 
-func _on_dive_failed() -> void:
+func _on_dive_failed(reason: String = "体力耗尽") -> void:
 	if ended:
 		return
 	await get_tree().create_timer(BalanceRes.FAIL_RESULT_DELAY).timeout
-	_end_dive(false)
+	_end_dive(false, reason)
 
 
 # ---------------- 刷新 ----------------
 
-## 从当前变体的宝物点中按种子随机激活一部分。
+## 从当前变体的宝箱点中按种子随机激活一部分。
 func _spawn_chests() -> void:
 	for zone in ["A", "B", "C"]:
 		var spots: Array = (_chosen[zone]["variant"]["chests"] as Array).duplicate()
@@ -172,7 +212,105 @@ func _spawn_chests() -> void:
 			var chest := ChestScene.instantiate()
 			chest.position = spots[i]
 			add_child(chest)
-			chest.setup(_roll_treasure(zone))
+			chest.setup_container({
+				"kind": "chest",
+				"name": String(ItemDBRes.CONTAINERS["chest"]["name"]),
+				"search_time": float(ItemDBRes.CONTAINERS["chest"]["search_time"]),
+				"loot": _make_chest_provider(zone),
+				"glow": ZONE_GLOWS[zone],
+			})
+
+
+## 小型容器（海贝/垃圾袋）：按种子沿海床散布，避开实体与宝箱点。
+func _spawn_containers() -> void:
+	var solids := _all_solids()
+	var floor_y := {"A": 800.0, "B": 950.0, "C": 950.0}
+	var x_range := {"A": [110.0, 1640.0], "B": [1760.0, 3340.0], "C": [3530.0, 5070.0]}
+	for zone in ["A", "B", "C"]:
+		var placed := 0
+		var tries := 0
+		while placed < int(BalanceRes.CONTAINER_COUNTS[zone]) and tries < 80:
+			tries += 1
+			var x := _rng.randf_range(x_range[zone][0], x_range[zone][1])
+			var y: float = floor_y[zone] - 16.0
+			if not MapDataRes.circle_clear(Vector2(x, y), 30.0, solids):
+				continue
+			var kind := "shell" if _rng.randf() < 0.5 else "trash_bag"
+			var c := ChestScene.instantiate()
+			c.position = Vector2(x, y)
+			add_child(c)
+			c.setup_container({
+				"kind": kind,
+				"name": String(ItemDBRes.CONTAINERS[kind]["name"]),
+				"search_time": float(ItemDBRes.CONTAINERS[kind]["search_time"]),
+				"loot": _make_container_provider(kind),
+				"glow": Color(0.8, 0.85, 0.8, 0.45) if kind == "shell"
+					else Color(0.45, 0.55, 0.5, 0.4),
+			})
+			placed += 1
+
+
+## 上次失败的遗落物袋：内容来自 GameState.lost_cache。
+func _spawn_cache() -> void:
+	var cache: Dictionary = GameState.lost_cache
+	if cache.is_empty() or not cache.has("items") or (cache["items"] as Array).is_empty():
+		return
+	var c := ChestScene.instantiate()
+	c.position = Vector2(float(cache["x"]), float(cache["y"]))
+	add_child(c)
+	c.setup_container({
+		"kind": "cache", "name": "遗落物袋", "search_time": 2.0,
+		"loot": _take_cache_loot, "glow": Color(0.5, 0.9, 0.95, 0.7),
+	})
+
+
+func _make_chest_provider(zone: String) -> Callable:
+	return func() -> Array: return _roll_chest_loot(zone)
+
+
+func _make_container_provider(kind: String) -> Callable:
+	return func() -> Array: return _roll_container_loot(kind)
+
+
+## 宝箱掉落：件数与品质均按区域权重。
+func _roll_chest_loot(zone: String) -> Array:
+	var out: Array = []
+	var count := int(_weighted_roll(ItemDBRes.CHEST_COUNT_WEIGHTS[zone]))
+	for i in count:
+		out.append({
+			"id": String(_weighted_roll(ItemDBRes.ZONE_WEIGHTS[zone])),
+			"quality": String(_weighted_roll(ItemDBRes.CHEST_QUALITY_WEIGHTS[zone])),
+		})
+	return out
+
+
+## 小型容器掉落：单件，低价值池，可掉材料（@前缀）。
+func _roll_container_loot(kind: String) -> Array:
+	var pick = _weighted_roll(ItemDBRes.CONTAINERS[kind]["loot_pool"])
+	if pick is String and pick.begins_with("@"):
+		return [{"mat": pick.substr(1)}]
+	return [{"id": String(pick), "quality": String(_weighted_roll(ItemDBRes.CONTAINER_QUALITY_WEIGHTS))}]
+
+
+## 遗落物袋：一次性取出全部缓存内容。
+func _take_cache_loot() -> Array:
+	var items: Array = GameState.lost_cache.get("items", [])
+	GameState.lost_cache = {}
+	SaveManager.save_game(GameState.serialize())
+	return items.duplicate(true)
+
+
+func _weighted_roll(weights: Dictionary) -> Variant:
+	var total := 0.0
+	for k in weights:
+		total += float(weights[k])
+	var r := _rng.randf() * total
+	var acc := 0.0
+	for k in weights:
+		acc += float(weights[k])
+		if r <= acc:
+			return k
+	return weights.keys().back()
 
 
 func _shuffled(arr: Array) -> void:
@@ -181,18 +319,6 @@ func _shuffled(arr: Array) -> void:
 		var tmp = arr[i]
 		arr[i] = arr[j]
 		arr[j] = tmp
-
-
-func _roll_treasure(zone: String) -> String:
-	var weights: Dictionary = ItemDBRes.ZONE_WEIGHTS[zone]
-	var roll := _rng.randf()
-	var acc := 0.0
-	for id in weights:
-		acc += weights[id]
-		if roll <= acc:
-			return id
-	var keys: Array = weights.keys()
-	return keys[keys.size() - 1]
 
 
 func _spawn_sharks() -> void:

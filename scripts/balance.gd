@@ -44,7 +44,9 @@ const SHARK_BITE_RETREAT := 1.1        # 咬人后强制脱离时间（给玩家
 const BITE_KNOCKBACK := 260.0          # 被咬时玩家的击退速度
 
 # ---- 下潜刷新 ----
-const ACTIVE_PER_DIVE := {"A": 4, "B": 4, "C": 3}   # 每次下潜各区域激活的宝物点数（种子随机挑点）
+const ACTIVE_PER_DIVE := {"A": 4, "B": 4, "C": 3}      # 每次下潜各区域激活的宝箱点数（种子随机挑点）
+const CONTAINER_COUNTS := {"A": 6, "B": 5, "C": 4}     # 小型容器（海贝/垃圾袋）散布数量
 
 # ---- 节奏 ----
 const FAIL_RESULT_DELAY := 0.7    # 失败后延迟多少秒弹出结算
+const DIVE_TIME_LIMIT := 900.0    # 每次下潜时限（秒），归零 = 撤离窗口关闭

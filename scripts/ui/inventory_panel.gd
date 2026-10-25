@@ -1,5 +1,5 @@
 extends CanvasLayer
-## 水下背包界面（Tab 开关）：查看携带宝物、丢弃以释放容量。
+## 水下背包界面（Tab 开关）：逐件展示携带宝物（含品质），丢弃以释放容量。
 
 const ItemDBRes := preload("res://scripts/item_db.gd")
 
@@ -39,7 +39,7 @@ func _build() -> void:
 	scroll.add_child(_rows_box)
 
 	box.add_child(UICommon.vspace(4))
-	box.add_child(UICommon.label("丢弃宝物会立即释放容量；神像丢弃后鲨鱼危险加成解除。", 14, UICommon.DIM))
+	box.add_child(UICommon.label("丢弃会立即释放容量；品质越好的宝物越值钱。", 14, UICommon.DIM))
 
 	var close_btn := UICommon.button("关闭（Tab）", 18)
 	close_btn.pressed.connect(close)
@@ -74,41 +74,32 @@ func _refresh() -> void:
 		_rows_box.add_child(UICommon.label("（空）还没有携带任何宝物", 17, UICommon.DIM))
 		return
 
-	var counted := {}
-	for id in GameState.dive_bag:
-		counted[id] = counted.get(id, 0) + 1
-	for id in counted:
-		var info: Dictionary = ItemDBRes.TREASURES[id]
-		var n: int = counted[id]
+	for i in GameState.dive_bag.size():
+		var entry: Dictionary = GameState.dive_bag[i]
+		var info: Dictionary = ItemDBRes.TREASURES[entry["id"]]
+		var q: Dictionary = ItemDBRes.QUALITIES[entry["quality"]]
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		var color: Color = info["color"]
+		row.add_theme_constant_override("separation", 8)
+
 		var swatch := Panel.new()
-		swatch.custom_minimum_size = Vector2(16, 16)
+		swatch.custom_minimum_size = Vector2(14, 14)
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = color
+		sb.bg_color = q["color"]
 		sb.set_corner_radius_all(3)
 		swatch.add_theme_stylebox_override("panel", sb)
 		row.add_child(swatch)
-		var name_label := UICommon.label("%s ×%d" % [info["name"], n], 19)
+
+		var name_label := UICommon.label("%s·%s" % [q["name"], info["name"]], 18, q["color"])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_label)
-		row.add_child(UICommon.label("%d格/件 · 共%d" % [info["slots"], info["value"] * n], 16, UICommon.DIM))
-		var drop1 := UICommon.button("丢弃1", 16)
-		drop1.pressed.connect(_drop_one.bind(id))
-		row.add_child(drop1)
-		var drop_all := UICommon.button("全丢", 16)
-		drop_all.pressed.connect(_drop_all.bind(id))
-		row.add_child(drop_all)
+		row.add_child(UICommon.label("估值 %d · %d格" % [GameState.value_of(entry), info["slots"]],
+			15, UICommon.DIM))
+		var drop := UICommon.button("丢弃", 15)
+		drop.pressed.connect(_drop.bind(i))
+		row.add_child(drop)
 		_rows_box.add_child(row)
 
 
-func _drop_one(id: String) -> void:
-	if GameState.remove_dive_item(id):
+func _drop(index: int) -> void:
+	if GameState.remove_dive_item_at(index):
 		Sfx.play("click")
-
-
-func _drop_all(id: String) -> void:
-	while GameState.remove_dive_item(id):
-		pass
-	Sfx.play("click")
