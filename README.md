@@ -11,7 +11,7 @@
 **方式一：直接玩（推荐，无需安装任何东西）**
 
 1. 打开本仓库的 GitHub 页面 → 右侧 **Releases** → 最新版本（V0.1.0）
-2. 下载附件 `DeepSeaScavenger-v0.1.0-win64.zip`，解压到任意文件夹
+2. 点击说明中的下载链接（或到 `dist/` 目录）下载 `DeepSeaScavenger-v0.1.0-win64.zip`，解压到任意文件夹
 3. 双击 `DeepSeaScavenger.exe` 开始游戏
 
 > 需要 64 位 Windows 10/11；首次运行如被 SmartScreen 拦截，点「更多信息 → 仍要运行」。
@@ -26,11 +26,11 @@
 
 ## 更新方式
 
-- **玩家（方式一）**：到 Releases 重新下载最新版压缩包，解压覆盖即可。存档保存在系统目录
+- **玩家（方式一）**：到 Releases（或 `dist/` 目录）重新下载最新版压缩包，解压覆盖即可。存档保存在系统目录
   （`%APPDATA%\Godot\app_userdata\深海摸金\`），与游戏文件无关，覆盖不会丢进度。
 - **开发者（方式二）**：在本目录执行 `git pull` 拉取最新代码，再用 Godot 打开工程即可
   （首次打开会自动重新导入资源）。`git pull` 只更新代码和资源，不会动你的本地存档。
-  注意：`git pull` 拿到的是源码，必须用 Godot 运行；下载 exe 的玩家请走 Releases。
+  注意：`git pull` 拿到的是源码，必须用 Godot 运行；下载 exe 的玩家请走 Releases / `dist/`。
 
 ## 环境与运行（开发者）
 
