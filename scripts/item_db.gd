@@ -43,6 +43,27 @@ const TREASURES := {
 		"name": "诅咒神像", "value": 280, "slots": 5, "search_time": 7.0,
 		"color": Color(0.62, 0.32, 0.78), "rare": true,
 	},
+	# ---- V0.4 沉船高价值宝物（洞穴海蛇掉落 深海蛇珠） ----
+	"captain_compass": {
+		"name": "船长罗盘", "value": 220, "slots": 2, "search_time": 4.0,
+		"color": Color(0.9, 0.62, 0.2), "rare": true,
+	},
+	"gold_sextant": {
+		"name": "黄金六分仪", "value": 360, "slots": 3, "search_time": 5.0,
+		"color": Color(0.95, 0.72, 0.18), "rare": true,
+	},
+	"ritual_relic": {
+		"name": "古代祭祀遗物", "value": 420, "slots": 4, "search_time": 6.0,
+		"color": Color(0.4, 0.85, 0.8), "rare": true,
+	},
+	"cursed_relic": {
+		"name": "诅咒宝物", "value": 340, "slots": 3, "search_time": 6.0,
+		"color": Color(0.55, 0.25, 0.66), "rare": true,
+	},
+	"serpent_pearl": {
+		"name": "深海蛇珠", "value": 400, "slots": 3, "search_time": 5.5,
+		"color": Color(0.2, 0.7, 0.62), "rare": true,
+	},
 }
 
 ## 材料价格；leather 只能从海底获得也可回售/回购
@@ -121,4 +142,36 @@ const ZONE_WEIGHTS := {
 	"A": {"old_coin": 0.10, "bronze_coins": 0.55, "silver_platter": 0.35},
 	"B": {"bronze_coins": 0.15, "silver_platter": 0.45, "gold_cup": 0.40},
 	"C": {"silver_platter": 0.10, "gold_cup": 0.50, "cursed_idol": 0.40},
+}
+
+# ---- V0.4 沉船遗址掉落池（key 对应容器房间：商船货舱/海盗货舱/船长室/祭祀坛） ----
+const WRECK_LOOT := {
+	"merchant": {
+		"count": {2: 6, 3: 4},
+		"pool": {"silver_platter": 0.40, "gold_cup": 0.25, "bronze_coins": 0.20, "old_coin": 0.15},
+		"quality": "B",
+	},
+	"pirate_cargo": {
+		"count": {2: 7, 3: 3},
+		"pool": {"gold_cup": 0.40, "silver_platter": 0.30, "bronze_coins": 0.30},
+		"quality": "B",
+	},
+	"pirate_captain": {
+		"count": {1: 1},
+		"pool": {"captain_compass": 0.55, "gold_sextant": 0.45},
+		"bonus_pool": {"gold_cup": 0.6, "silver_platter": 0.4},
+		"quality": "captain",
+	},
+	"ritual": {
+		"count": {1: 5, 2: 5},
+		"pool": {"ritual_relic": 0.50, "cursed_relic": 0.35, "cursed_idol": 0.15},
+		"quality": "C",
+	},
+}
+
+## 沉船容器品质权重（船长室明显更好；B/C 复用区域宝箱品质表）
+const WRECK_QUALITY_WEIGHTS := {
+	"B": {"worn": 25, "standard": 45, "fine": 25, "pristine": 5},
+	"C": {"worn": 10, "standard": 35, "fine": 35, "pristine": 20},
+	"captain": {"worn": 0, "standard": 25, "fine": 45, "pristine": 30},
 }

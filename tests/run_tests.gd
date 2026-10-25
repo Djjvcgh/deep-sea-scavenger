@@ -15,6 +15,7 @@ func _initialize() -> void:
 	failures += _test_save_roundtrip()
 	failures += _test_map_data()
 	failures += _test_icons()
+	failures += _test_wrecks()
 	failures += _test_loot_randomness()
 	_print_result()
 	quit(1 if failures > 0 else 0)
@@ -386,6 +387,112 @@ func _icon_ok(id: String) -> bool:
 	return tex != null and tex.get_width() == 64 and tex.get_height() == 64
 
 
+func _test_wrecks() -> int:
+	print("[随机沉船]")
+	var WreckGenC = load("res://scripts/wreck_gen.gd")
+	# 模板结构不变量：甲板入舱口与两舷侧舱门均可通行（玩家胶囊 24×34）
+	for kind in MapData.WRECK_TEMPLATES:
+		var tpl: Dictionary = MapData.WRECK_TEMPLATES[kind]
+		var rects: Array = tpl["rects"]
+		var entrance: Array = tpl["entrance"]
+		var gap: float = float(entrance[1]) - float(entrance[0])
+		_check(gap >= 46.0, "%s 甲板入舱口宽 %dpx ≥ 46" % [kind, int(gap)])
+		var cx: float = (float(entrance[0]) + float(entrance[1])) * 0.5
+		var interior: Rect2 = tpl["interior"]
+		var blocked := false
+		for r in rects:
+			var rect := Rect2(r[0], r[1], r[2], r[3])
+			if cx > rect.position.x and cx < rect.end.x and rect.end.y <= interior.position.y + 1.0:
+				blocked = true
+		_check(not blocked, "%s 入舱口垂直可达舱内" % kind)
+		# 侧舱门：两舷中线处的胶囊盒不被船体截断
+		var min_x := 99999.0
+		var max_x := -99999.0
+		for r in rects:
+			min_x = minf(min_x, r[0])
+			max_x = maxf(max_x, r[0] + r[2])
+		var door_fail := 0
+		for wall_cx in [min_x + 9.0, max_x - 9.0]:
+			var pass_box := Rect2(wall_cx - 14.0, -72.0, 28.0, 34.0)
+			for r in rects:
+				if pass_box.intersects(Rect2(r[0], r[1], r[2], r[3])):
+					_check_quiet(false, "%s 侧舱门 x=%.0f 被船体 %s 截断" % [kind, wall_cx, r])
+					door_fail += 1
+		_check(door_fail == 0, "%s 两舷侧舱门可通行" % kind)
+		var spot_fail := 0
+		for spot in tpl["spots"]:
+			for r in rects:
+				if WreckGenC._circle_vs_rect(Vector2(spot.x, spot.y), 24.0,
+						Rect2(r[0], r[1], r[2], r[3])):
+					_check_quiet(false, "%s 容器点 %s 撞到船体 %s" % [kind, spot, r])
+					spot_fail += 1
+		_check(spot_fail == 0, "%s 舱内容器点不与船体重叠" % kind)
+
+	# 全部变体锚点合法性：不压实体 / 通道胶囊盒贯通 / 不压宝箱点 / 不穿巡逻带
+	var anchor_zone_count := 0
+	var anchor_fail := 0
+	for zone in ["B", "C"]:
+		for vi in MapData.ZONE_VARIANTS[zone].size():
+			var v: Dictionary = MapData.ZONE_VARIANTS[zone][vi]
+			var solids: Array = MapData.SHARED_SOLIDS + v["solids"]
+			for anchor_cfg in v.get("wreck_anchors", []):
+				anchor_zone_count += 1
+				for kind in anchor_cfg["kinds"]:
+					var tpl: Dictionary = MapData.WRECK_TEMPLATES[kind]
+					var anchor := Vector2(anchor_cfg["x"], MapData.WRECK_FLOOR_Y)
+					var rects: Array = WreckGenC._world_rects(tpl, anchor)
+					var tag: String = "%s%d(%s)@%.0f %s" % [zone, vi, v["name"], anchor_cfg["x"], kind]
+					if not WreckGenC.placement_ok(rects, solids, v["chests"], v["patrols"]):
+						_check_quiet(false, "锚点非法：%s" % tag)
+						anchor_fail += 1
+				# 锚点自带容器点不与变体宝箱点重叠
+				for kind in anchor_cfg["kinds"]:
+					for s in MapData.WRECK_TEMPLATES[kind]["spots"]:
+						for cs in v["chests"]:
+							if anchor_cfg["x"] + s.x > cs.x - 70.0 and anchor_cfg["x"] + s.x < cs.x + 70.0 \
+									and MapData.WRECK_FLOOR_Y + s.y > cs.y - 70.0 \
+									and MapData.WRECK_FLOOR_Y + s.y < cs.y + 70.0:
+								_check_quiet(false, "锚点容器点撞宝箱点：%s%d %s" % [zone, vi, kind])
+								anchor_fail += 1
+	_check(anchor_fail == 0, "%d 个变体锚点全部合法" % anchor_zone_count)
+	_check(anchor_zone_count == 4, "共 4 个沉船锚点（B0/B1/B4/C2）")
+
+	# 200 种子：确定性 + 类型分布
+	var total := 0
+	var kind_seen := {}
+	var nondet := 0
+	for seed_i in 200:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = seed_i
+		var chosen := {}
+		for zone in ["A", "B", "C"]:
+			chosen[zone] = {"index": rng.randi_range(0, MapData.ZONE_VARIANTS[zone].size() - 1)}
+		for zone in ["A", "B", "C"]:
+			chosen[zone]["variant"] = MapData.ZONE_VARIANTS[zone][chosen[zone]["index"]]
+		var wrecks: Array = WreckGenC.generate(rng, chosen)
+		total += wrecks.size()
+		for w in wrecks:
+			kind_seen[w["kind"]] = true
+		var rng2 := RandomNumberGenerator.new()
+		rng2.seed = seed_i
+		var chosen2 := {}
+		for zone in ["A", "B", "C"]:
+			chosen2[zone] = {"index": rng2.randi_range(0, MapData.ZONE_VARIANTS[zone].size() - 1)}
+		for zone in ["A", "B", "C"]:
+			chosen2[zone]["variant"] = MapData.ZONE_VARIANTS[zone][chosen2[zone]["index"]]
+		var wrecks2: Array = WreckGenC.generate(rng2, chosen2)
+		if wrecks2.size() != wrecks.size():
+			nondet += 1
+		else:
+			for wi in wrecks.size():
+				if wrecks[wi]["anchor"] != wrecks2[wi]["anchor"] or wrecks[wi]["kind"] != wrecks2[wi]["kind"]:
+					nondet += 1
+	_check(nondet == 0, "同种子生成结果可复现")
+	_check(kind_seen.size() == 3, "三种沉船类型都出现过（实际 %d 种）" % kind_seen.size())
+	_check(total > 80, "200 局共生成 %d 艘沉船（激活率合理）" % total)
+	return 0
+
+
 func _test_loot_randomness() -> int:
 	print("[掉落随机性]")
 	var scene = load("res://scenes/underwater.tscn").instantiate()
@@ -401,4 +508,25 @@ func _test_loot_randomness() -> int:
 	_check(qualities.get("pristine", 0) > 0, "出现完美品质")
 	_check(qualities.get("standard", 0) > 0, "出现标准品质")
 	_check(type_seen.size() >= 2, "掉落类型多样（实际 %d 种）" % type_seen.size())
+
+	# 沉船掉落池：id/品质合法，船长室必出罗盘或六分仪
+	var pool_bad := 0
+	for pool_key in ItemDB.WRECK_LOOT:
+		var cfg: Dictionary = ItemDB.WRECK_LOOT[pool_key]
+		for id in cfg["pool"]:
+			if not ItemDB.TREASURES.has(id):
+				_check_quiet(false, "沉船池 %s 引用不存在的宝物 %s" % [pool_key, id])
+				pool_bad += 1
+		if cfg.has("bonus_pool"):
+			for id in cfg["bonus_pool"]:
+				if not ItemDB.TREASURES.has(id):
+					_check_quiet(false, "沉船池 %s 加成引用不存在的宝物 %s" % [pool_key, id])
+					pool_bad += 1
+	_check(pool_bad == 0, "沉船掉落池引用合法")
+	var captain_seen := {}
+	for i in 60:
+		for entry in scene._roll_wreck_loot("pirate_captain", Vector2.ZERO):
+			captain_seen[entry["id"]] = true
+	_check(captain_seen.has("captain_compass") and captain_seen.has("gold_sextant"),
+		"船长室 60 次掉落覆盖罗盘与六分仪（实际 %d 种）" % captain_seen.size())
 	return 0

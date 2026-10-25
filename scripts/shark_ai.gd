@@ -164,6 +164,15 @@ func _physics_process(delta: float) -> void:
 	_animate()
 
 
+## 外部事件惊动（如祭祀宝物被扰动）：立刻进入警戒游向玩家。
+func disturb() -> void:
+	if dead or state == State.CHASE or state == State.FLEE:
+		return
+	_alert_left = BalanceRes.SHARK_ALERT_TIME
+	Sfx.play("alert", -4.0)
+	_enter(State.ALERT)
+
+
 func _enter(s: int) -> void:
 	if state == s:
 		return

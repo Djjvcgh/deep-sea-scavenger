@@ -6,6 +6,7 @@ const MapDataRes := preload("res://scripts/map_data.gd")
 const BalanceRes := preload("res://scripts/balance.gd")
 const ItemDBRes := preload("res://scripts/item_db.gd")
 const PlayerScript := preload("res://scripts/player.gd")
+const WreckGenRes := preload("res://scripts/wreck_gen.gd")
 
 const ChestScene := preload("res://scenes/treasure_chest.tscn")
 const SharkScene := preload("res://scenes/shark.tscn")
@@ -35,6 +36,14 @@ const BG_FLORA := ["background_seaweed_a", "background_seaweed_b",
 	"background_seaweed_c", "background_seaweed_d", "background_seaweed_e",
 	"background_seaweed_f", "background_seaweed_g", "background_seaweed_h"]
 
+# 沉船内容器的展示样式（key 对应 ItemDB.WRECK_LOOT 的房间池）
+const WRECK_CHEST_STYLE := {
+	"merchant": {"name": "货舱宝箱", "glow": Color(0.5, 0.85, 0.85, 0.65)},
+	"pirate_cargo": {"name": "海盗货舱宝箱", "glow": Color(0.95, 0.78, 0.25, 0.75)},
+	"pirate_captain": {"name": "船长室宝箱", "glow": Color(0.98, 0.6, 0.15, 0.85)},
+	"ritual": {"name": "祭祀宝箱", "glow": Color(0.7, 0.4, 0.85, 0.85)},
+}
+
 var player: CharacterBody2D
 var hud: CanvasLayer
 var inventory_panel: CanvasLayer
@@ -50,6 +59,9 @@ var boss: Node2D = null
 
 var _rng := RandomNumberGenerator.new()
 var _chosen := {}              # zone -> {"index": int, "variant": Dictionary}
+var _wrecks: Array = []        # 本次下潜生成的沉船遗址（WreckGen.generate 结果）
+var _wreck_solids := {}        # zone -> 沉船实体矩形（并入地形系统）
+var _wreck_seen := {}          # 已提示过发现的沉船下标
 var _extract_area: Area2D
 var _seaweeds: Array = []
 var _bubbles: Array = []
@@ -77,6 +89,7 @@ func _ready() -> void:
 	_build_terrain()
 	_build_extraction()
 	_spawn_chests()
+	_spawn_wreck_containers()
 	_spawn_containers()
 	_spawn_cache()
 	_spawn_sharks()
@@ -131,6 +144,12 @@ func _roll_layout() -> void:
 		var variants: Array = MapDataRes.ZONE_VARIANTS[zone]
 		var index := _rng.randi_range(0, variants.size() - 1)
 		_chosen[zone] = {"index": index, "variant": variants[index]}
+	# 沉船遗址：按种子激活变体锚点（0~2 艘，合法性由变体数据校验保证）
+	_wrecks = WreckGenRes.generate(_rng, _chosen)
+	_wreck_solids = {"A": [], "B": [], "C": []}
+	for w in _wrecks:
+		for r in w["rects"]:
+			_wreck_solids[w["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, "wreck"])
 
 
 func get_zone_label() -> String:
@@ -172,7 +191,21 @@ func _physics_process(delta: float) -> void:
 	if in_extraction and not player.is_searching() and Input.is_action_just_pressed("interact"):
 		_end_dive(true)
 		return
+	_update_wreck_discovery()
 	_update_boss_trigger(delta)
+
+
+## 进入沉船内部时的一次性发现提示。
+func _update_wreck_discovery() -> void:
+	for wi in _wrecks.size():
+		if _wreck_seen.has(wi):
+			continue
+		var interior: Rect2 = _wrecks[wi]["interior"]
+		if interior.has_point(player.global_position):
+			_wreck_seen[wi] = true
+			var wname: String = MapDataRes.WRECK_TEMPLATES[_wrecks[wi]["kind"]]["name"]
+			hud.spawn_notice("发现沉船遗址：%s" % wname, UICommon.GOLD)
+			Sfx.play("click", -4.0)
 
 
 ## 携带诅咒神像时，深渊巨影会在短暂延迟后苏醒。
@@ -316,6 +349,71 @@ func _spawn_chests() -> void:
 			})
 
 
+## 沉船遗址：舱体阴影 + 舱内可搜索容器（掉落来自 WRECK_LOOT 房间池）。
+func _spawn_wreck_containers() -> void:
+	for wi in _wrecks.size():
+		var wreck: Dictionary = _wrecks[wi]
+		var interior: Rect2 = wreck["interior"]
+		var shadow := Polygon2D.new()
+		shadow.polygon = PackedVector2Array([
+			interior.position, interior.position + Vector2(interior.size.x, 0),
+			interior.end, interior.position + Vector2(0, interior.size.y)])
+		shadow.color = Color(0.01, 0.03, 0.06, 0.4)
+		shadow.z_index = 1
+		add_child(shadow)
+		for si in wreck["spots"].size():
+			var pool_key := _wreck_pool_key(wreck["kind"], si)
+			var style: Dictionary = WRECK_CHEST_STYLE[pool_key]
+			var c := ChestScene.instantiate()
+			c.position = wreck["spots"][si]
+			add_child(c)
+			c.setup_container({
+				"kind": "chest",
+				"name": String(style["name"]),
+				"search_time": float(ItemDBRes.CONTAINERS["chest"]["search_time"]),
+				"loot": _make_wreck_provider(pool_key, wreck["anchor"]),
+				"glow": style["glow"],
+			})
+
+
+## 房间池 key：海盗船 0 号点=货舱、1 号点=船长室；其余类型单池。
+func _wreck_pool_key(kind: String, spot_index: int) -> String:
+	if kind == "pirate":
+		return "pirate_cargo" if spot_index == 0 else "pirate_captain"
+	return kind
+
+
+func _make_wreck_provider(pool_key: String, anchor: Vector2) -> Callable:
+	return func() -> Array: return _roll_wreck_loot(pool_key, anchor)
+
+
+func _roll_wreck_loot(pool_key: String, anchor: Vector2) -> Array:
+	var cfg: Dictionary = ItemDBRes.WRECK_LOOT[pool_key]
+	var out: Array = []
+	var count := int(_weighted_roll(cfg["count"]))
+	for i in count:
+		out.append({
+			"id": String(_weighted_roll(cfg["pool"])),
+			"quality": String(_weighted_roll(ItemDBRes.WRECK_QUALITY_WEIGHTS[cfg["quality"]])),
+		})
+	if cfg.has("bonus_pool"):
+		out.append({"id": String(_weighted_roll(cfg["bonus_pool"])),
+			"quality": String(_weighted_roll(ItemDBRes.WRECK_QUALITY_WEIGHTS[cfg["quality"]]))})
+	if pool_key == "ritual":
+		_disturb_sharks(anchor)
+	return out
+
+
+## 祭祀宝物被扰动：附近鲨群立刻警觉游向玩家（沉船的危险事件）。
+func _disturb_sharks(from_pos: Vector2) -> void:
+	if hud == null:
+		return
+	hud.spawn_notice("祭祀船的诅咒惊动了附近的鲨群！", UICommon.ORANGE)
+	for s in get_tree().get_nodes_in_group("sharks"):
+		if s.global_position.distance_to(from_pos) < 620.0:
+			s.disturb()
+
+
 ## 小型容器（海贝/垃圾袋）：按种子沿海床散布，避开实体与宝箱点。
 func _spawn_containers() -> void:
 	var solids := _all_solids()
@@ -443,7 +541,7 @@ func _chosen_zone_solids_patrols() -> Array:
 
 
 func _solids_for(zone: String) -> Array:
-	return MapDataRes.variant_solids(zone, _chosen[zone]["index"])
+	return MapDataRes.variant_solids(zone, _chosen[zone]["index"]) + _wreck_solids.get(zone, [])
 
 
 func _all_solids() -> Array:
