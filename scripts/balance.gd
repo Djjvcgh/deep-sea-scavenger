@@ -32,13 +32,16 @@ const INTERACT_RANGE := 78.0      # 交互判定半径 px
 const SHARK_PATROL_SPEED := 70.0
 const SHARK_ALERT_SPEED := 45.0
 const SHARK_CHASE_SPEED := 120.0
+const SHARK_CHASE_TURN := 240.0        # 追逐转向加速度：较低让玩家可以横向走位甩开
 const SHARK_DETECT_RANGE := 180.0      # 普通发现范围 px
 const SHARK_DETECT_CURSE_MULT := 1.5   # 携带诅咒神像时 ×1.5 = 270
 const SHARK_ALERT_TIME := 0.55         # 警戒持续时间，之后进入追逐
 const SHARK_LOSE_SIGHT_TIME := 2.2     # 丢失视线多久后放弃追逐
-const SHARK_GIVEUP_DIST_MULT := 1.35   # 玩家距离超过发现范围×该值时放弃
+const SHARK_GIVEUP_DIST_MULT := 1.25   # 玩家距离超过发现范围×该值时放弃
 const SHARK_DAMAGE := 1
-const SHARK_ATTACK_COOLDOWN := 1.0
+const SHARK_ATTACK_COOLDOWN := 1.6     # 同一条鲨鱼两次咬击的最小间隔
+const SHARK_BITE_RETREAT := 1.1        # 咬人后强制脱离时间（给玩家脱身窗口）
+const BITE_KNOCKBACK := 260.0          # 被咬时玩家的击退速度
 
 # ---- 下潜刷新 ----
 const SPAWN_A_ACTIVE := 3         # 区域A每次激活的宝物点数

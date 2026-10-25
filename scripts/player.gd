@@ -179,13 +179,18 @@ func is_searching() -> bool:
 
 # ---------------- 生命与伤害 ----------------
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, from_pos: Variant = null) -> void:
 	if dead or invincible_left > 0.0:
 		return
 	hp = maxi(0, hp - amount)
 	invincible_left = BalanceRes.INVINCIBLE_TIME
 	_flash_left = 0.25
 	_cancel_search()
+	# 被咬击退：制造脱身动量
+	if from_pos != null:
+		var away: Vector2 = (global_position - from_pos).normalized()
+		if away.length_squared() > 0.0001:
+			velocity = away * BalanceRes.BITE_KNOCKBACK
 	hp_changed.emit(hp, max_hp)
 	hurt.emit()
 	Sfx.play("hurt")

@@ -18,6 +18,7 @@ var _dir := 1.0
 var _alert_left := 0.0
 var _lose_sight_left := 0.0
 var _attack_cd := 0.0
+var _retreat_left := 0.0
 var _anim_t := 0.0
 
 @onready var los: RayCast2D = $Los
@@ -48,6 +49,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_anim_t += delta
 	_attack_cd = maxf(0.0, _attack_cd - delta)
+	_retreat_left = maxf(0.0, _retreat_left - delta)
 	var target_valid: bool = player != null and is_instance_valid(player) and not player.dead
 	var can_see: bool = target_valid and _see_player()
 	var dist := global_position.distance_to(player.global_position) if target_valid else INF
@@ -69,7 +71,7 @@ func _physics_process(delta: float) -> void:
 		State.ALERT:
 			if target_valid:
 				var to_player := (player.global_position - global_position).normalized()
-				velocity = velocity.move_toward(to_player * BalanceRes.SHARK_ALERT_SPEED, 300.0 * delta)
+				velocity = velocity.move_toward(to_player * BalanceRes.SHARK_ALERT_SPEED, BalanceRes.SHARK_CHASE_TURN * delta)
 			_alert_left -= delta
 			if _alert_left <= 0.0:
 				if can_see and dist < detect * 1.2:
@@ -79,8 +81,13 @@ func _physics_process(delta: float) -> void:
 					_enter(State.PATROL)
 		State.CHASE:
 			if target_valid:
-				var to_player := (player.global_position - global_position).normalized()
-				velocity = velocity.move_toward(to_player * BalanceRes.SHARK_CHASE_SPEED, 420.0 * delta)
+				if _retreat_left > 0.0:
+					# 咬人后的强制脱离：背向玩家游走，给玩家脱身窗口
+					var away := (global_position - player.global_position).normalized()
+					velocity = velocity.move_toward(away * BalanceRes.SHARK_PATROL_SPEED, 400.0 * delta)
+				else:
+					var to_player := (player.global_position - global_position).normalized()
+					velocity = velocity.move_toward(to_player * BalanceRes.SHARK_CHASE_SPEED, BalanceRes.SHARK_CHASE_TURN * delta)
 			if can_see and dist < detect * 1.4:
 				_lose_sight_left = BalanceRes.SHARK_LOSE_SIGHT_TIME
 			else:
@@ -104,10 +111,11 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	# 咬击：与玩家接触且冷却结束时造成伤害（玩家另有2秒无敌）。
-	if _attack_cd <= 0.0 and target_valid and bite.overlaps_body(player):
+	# 咬击：与玩家接触且冷却结束（脱离期不咬）。
+	if _attack_cd <= 0.0 and _retreat_left <= 0.0 and target_valid and bite.overlaps_body(player):
 		_attack_cd = BalanceRes.SHARK_ATTACK_COOLDOWN
-		player.take_damage(BalanceRes.SHARK_DAMAGE)
+		_retreat_left = BalanceRes.SHARK_BITE_RETREAT
+		player.take_damage(BalanceRes.SHARK_DAMAGE, global_position)
 
 	_animate()
 
