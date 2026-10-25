@@ -20,8 +20,11 @@ var _extract_label: Label
 var _notice_box: VBoxContainer
 var _return_label: Label
 var _vignette: ColorRect
+var _boss_box: VBoxContainer
+var _boss_bar: ProgressBar
 var _heartbeat_cd := 0.0
 var _t := 0.0
+var _hint_base := "WASD 游动 · Shift 冲刺 · 长按 E 搜索 · Tab 背包 · Esc 暂停"
 
 
 func setup(player_ref: CharacterBody2D, dive_ref: Node2D) -> void:
@@ -125,6 +128,25 @@ func _build() -> void:
 	_warning_label.visible = false
 	add_child(_warning_label)
 
+	# 巨影血条（Boss 活跃时显示）
+	_boss_box = VBoxContainer.new()
+	_boss_box.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_boss_box.anchor_left = 0.5
+	_boss_box.anchor_right = 0.5
+	_boss_box.offset_left = -170
+	_boss_box.offset_right = 170
+	_boss_box.offset_top = 64
+	_boss_box.visible = false
+	add_child(_boss_box)
+	var boss_name := UICommon.label("深渊巨影", 16, Color(0.8, 0.5, 0.85))
+	boss_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_boss_box.add_child(boss_name)
+	_boss_bar = ProgressBar.new()
+	_boss_bar.custom_minimum_size = Vector2(0, 12)
+	_boss_bar.show_percentage = false
+	_boss_bar.max_value = 1.0
+	_boss_box.add_child(_boss_bar)
+
 	# 底部中央：交互提示 + 搜索进度 + 撤离提示
 	var bc := VBoxContainer.new()
 	bc.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -159,7 +181,8 @@ func _build() -> void:
 	bc.add_child(_extract_label)
 
 	# 右下：操作提示
-	var hint := UICommon.label("WASD 游动 · Shift 冲刺 · 长按 E 搜索 · Tab 背包 · Esc 暂停", 14, UICommon.DIM)
+	var hint := UICommon.label(_hint_base, 14, UICommon.DIM)
+	hint.name = "HintLabel"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	hint.anchor_left = 1.0
 	hint.anchor_top = 1.0
@@ -256,6 +279,17 @@ func _process(delta: float) -> void:
 	else:
 		_return_label.visible = false
 
+	# 巨影血条
+	var boss_active: bool = dive != null and dive.any_boss_active()
+	_boss_box.visible = boss_active
+	if boss_active:
+		_boss_bar.value = float(dive.boss.hp) / float(dive.boss.hp_max)
+
+	# 操作提示（拥有鱼叉后追加）
+	var hint_label := get_node_or_null("HintLabel")
+	if hint_label != null:
+		hint_label.text = _hint_base + (" · 空格 鱼叉刺击" if GameState.has_harpoon else "")
+
 	# 临界体力：红晕脉冲 + 心跳
 	if alive and ratio <= BalanceRes.CRIT_STAMINA_RATIO:
 		_vignette.color.a = 0.14 + 0.1 * (0.5 + 0.5 * sin(_t * 7.0))
@@ -267,8 +301,10 @@ func _process(delta: float) -> void:
 		_vignette.color.a = 0.0
 		_heartbeat_cd = 0.0
 
-	# 危险警告（优先级：鲨鱼 > 重度低体力 > 低体力）
-	if dive != null and dive.any_shark_alerting():
+	# 危险警告（优先级：巨影 > 鲨鱼 > 重度低体力 > 低体力）
+	if dive != null and dive.any_boss_active():
+		_show_warning("深渊巨影盯上了你！", Color(0.8, 0.5, 0.85))
+	elif dive != null and dive.any_shark_alerting():
 		_show_warning("危险！鲨鱼发现了你！", UICommon.DANGER)
 	elif ratio <= BalanceRes.CRIT_STAMINA_RATIO:
 		_show_warning("体力即将耗尽！立即返航！", UICommon.DANGER)

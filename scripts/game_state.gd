@@ -24,6 +24,7 @@ var upgrades := {"fins": false, "amulet": false}
 var bag_tier := 0                        # 背包档位（ItemDB.BAG_TIERS 下标）
 var boat_invested := {"wood": 0, "iron": 0, "canvas": 0}
 var boat_completed := false
+var has_harpoon := false               # 已打造鱼叉（空格刺击）
 var lost_cache := {}                     # 死亡掉落 {"x","y","items":[{id,quality}]}
 var cache_found_seen := false            # 本次下潜是否提示过遗落物
 
@@ -40,6 +41,7 @@ func reset_defaults() -> void:
 	bag_tier = 0
 	boat_invested = {"wood": 0, "iron": 0, "canvas": 0}
 	boat_completed = false
+	has_harpoon = false
 	lost_cache = {}
 	cache_found_seen = false
 	dive_bag = []
@@ -57,6 +59,7 @@ func serialize() -> Dictionary:
 		"bag_tier": bag_tier,
 		"boat_invested": boat_invested.duplicate(),
 		"boat_completed": boat_completed,
+		"has_harpoon": has_harpoon,
 		"lost_cache": lost_cache.duplicate(true),
 	}
 
@@ -86,6 +89,7 @@ func apply_save(data: Dictionary) -> void:
 	if data.has("bag_tier"):
 		bag_tier = clampi(int(data.get("bag_tier", 0)), 0, ItemDBRes.BAG_TIERS.size() - 1)
 	boat_completed = bool(data.get("boat_completed", false))
+	has_harpoon = bool(data.get("has_harpoon", false))
 
 	var cache = data.get("lost_cache", {})
 	if cache is Dictionary and cache.has("items") and cache["items"] is Array:
@@ -283,6 +287,21 @@ func craft_bag() -> bool:
 	bag_tier = next
 	materials_changed.emit()
 	bag_tier_changed.emit()
+	return true
+
+
+## 打造鱼叉（一次性）。
+func craft_harpoon() -> bool:
+	if has_harpoon:
+		return false
+	for mat in ItemDBRes.HARPOON_CRAFT:
+		if materials[mat] < int(ItemDBRes.HARPOON_CRAFT[mat]):
+			return false
+	for mat in ItemDBRes.HARPOON_CRAFT:
+		materials[mat] -= int(ItemDBRes.HARPOON_CRAFT[mat])
+	has_harpoon = true
+	materials_changed.emit()
+	upgrades_changed.emit()
 	return true
 
 

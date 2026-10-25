@@ -29,6 +29,8 @@ var active_chest: Area2D = null    # 正在搜索的宝箱
 
 var _anim_t := 0.0
 var _flash_left := 0.0
+var _attack_cd := 0.0
+var _shake_left := 0.0
 
 @onready var interact_area: Area2D = $InteractRange
 @onready var camera: Camera2D = $Camera2D
@@ -77,6 +79,12 @@ func _physics_process(delta: float) -> void:
 	_anim_t += delta
 	invincible_left = maxf(0.0, invincible_left - delta)
 	_flash_left = maxf(0.0, _flash_left - delta)
+	_attack_cd = maxf(0.0, _attack_cd - delta)
+	if _shake_left > 0.0:
+		_shake_left = maxf(0.0, _shake_left - delta)
+		camera.offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * 9.0 * (_shake_left / 0.25)
+	else:
+		camera.offset = Vector2.ZERO
 	_animate()
 	if dead:
 		velocity = velocity.move_toward(Vector2(0, -26), 200.0 * delta)
@@ -84,6 +92,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if mode == Mode.SWIM:
 		_swim(delta)
+		_update_attack()
 	else:
 		_walk(delta)
 	_update_interact()
@@ -200,6 +209,63 @@ func _complete_loot() -> void:
 
 func is_searching() -> bool:
 	return active_chest != null
+
+
+# ---------------- 鱼叉刺击 ----------------
+
+func shake(strength := 0.25) -> void:
+	_shake_left = strength
+
+
+## 空格刺击：自动瞄准 150px 内最近的敌人，无目标则朝面朝方向。
+func _update_attack() -> void:
+	if not Input.is_action_just_pressed("attack"):
+		return
+	if dead or control_locked or not GameState.has_harpoon:
+		return
+	if _attack_cd > 0.0 or stamina < BalanceRes.HARPOON_STAMINA:
+		return
+	_attack_cd = BalanceRes.HARPOON_COOLDOWN
+	_drain_stamina(BalanceRes.HARPOON_STAMINA)
+
+	var aim_dir := Vector2.RIGHT * visual.scale.x
+	var best_d := BalanceRes.HARPOON_RANGE
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.get("dead"):
+			continue
+		var d := global_position.distance_to(e.global_position)
+		if d < best_d:
+			best_d = d
+			aim_dir = (e.global_position - global_position).normalized()
+
+	var hit_point := global_position + aim_dir * BalanceRes.HARPOON_REACH
+	# 沿刺击线段的胶囊判定：敌人中心到线段距离 ≤ 其判定半径即命中
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.get("dead"):
+			continue
+		var to_e: Vector2 = e.global_position - global_position
+		var along := clampf(to_e.dot(aim_dir), 0.0, BalanceRes.HARPOON_REACH)
+		var closest := global_position + aim_dir * along
+		if e.global_position.distance_to(closest) <= e.hit_radius:
+			e.take_damage(BalanceRes.HARPOON_DAMAGE, global_position)
+
+	velocity += aim_dir * 90.0
+	_spawn_stab_visual(aim_dir, hit_point)
+	Sfx.play("stab")
+
+
+func _spawn_stab_visual(aim_dir: Vector2, hit_point: Vector2) -> void:
+	var line := Line2D.new()
+	line.points = PackedVector2Array([
+		global_position + aim_dir * 14.0,
+		global_position.lerp(hit_point, 0.6) + aim_dir * 20.0])
+	line.width = 3.5
+	line.default_color = Color(0.85, 0.88, 0.95, 0.9)
+	line.z_index = 6
+	get_parent().add_child(line)
+	var tw := line.create_tween()
+	tw.tween_property(line, "modulate:a", 0.0, 0.16)
+	tw.tween_callback(line.queue_free)
 
 
 # ---------------- 生命与伤害 ----------------

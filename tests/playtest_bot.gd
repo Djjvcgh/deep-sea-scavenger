@@ -49,8 +49,8 @@ func _scenario_roundtrip() -> void:
 		s.set_physics_process(false)
 		s.position = Vector2(9000.0, 500.0)
 	gs.add_dive_item("gold_cup")
-	gs.add_dive_item("cursed_idol")   # 3+5=8格满载 → 全程负重
-	_check(gs.bag_used_slots() == 8, "背包满载8格（负重生效）")
+	gs.add_dive_item("gold_cup")   # 3+3=6格触发负重（不用神像，避免唤醒巨影干扰路线试玩）
+	_check(gs.bag_used_slots() == 6, "满载6格（负重生效）")
 	player.global_position = Vector2(200, 480)
 	await create_timer(0.2).timeout
 

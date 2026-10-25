@@ -14,6 +14,7 @@ const InventoryScene := preload("res://scenes/ui/inventory_panel.tscn")
 const LootScene := preload("res://scenes/ui/loot_panel.tscn")
 const ResultsScene := preload("res://scenes/ui/results_panel.tscn")
 const PauseScene := preload("res://scenes/ui/pause_menu.tscn")
+const BossScript := preload("res://scripts/boss_leviathan.gd")
 
 const SPR := "res://assets/sprites/kenney_fish/"
 const ZONE_GLOWS := {
@@ -45,6 +46,7 @@ var in_extraction := false
 var ended := false
 var dive_seed := 0
 var time_left := 0.0
+var boss: Node2D = null
 
 var _rng := RandomNumberGenerator.new()
 var _chosen := {}              # zone -> {"index": int, "variant": Dictionary}
@@ -52,12 +54,15 @@ var _extract_area: Area2D
 var _seaweeds: Array = []
 var _bubbles: Array = []
 var _schools: Array = []
+var _pickups: Array = []
 var _shadow: Polygon2D
 var _canvas_mod: CanvasModulate
 var _shadow_t := 0.0
 var _tension_on := false
 var _tex_cache := {}
 var _used_rect_cache := {}
+var _boss_awaken_left := -1.0
+var _idol_warned := false
 
 
 func _ready() -> void:
@@ -159,6 +164,89 @@ func _physics_process(delta: float) -> void:
 		return
 	if in_extraction and not player.is_searching() and Input.is_action_just_pressed("interact"):
 		_end_dive(true)
+		return
+	_update_boss_trigger(delta)
+
+
+## 携带诅咒神像时，深渊巨影会在短暂延迟后苏醒。
+func _update_boss_trigger(delta: float) -> void:
+	if boss != null:
+		return
+	if GameState.has_curse_idol():
+		if not _idol_warned:
+			_idol_warned = true
+			_boss_awaken_left = BalanceRes.BOSS_AWAKEN_DELAY
+			hud.spawn_notice("神像的诅咒在深海中回荡……", UICommon.ORANGE)
+		else:
+			_boss_awaken_left -= delta
+			if _boss_awaken_left <= 0.0:
+				_spawn_boss()
+	else:
+		_idol_warned = false
+		_boss_awaken_left = -1.0
+
+
+func _spawn_boss() -> void:
+	boss = BossScript.new()
+	boss.setup(player)          # 先注入玩家引用（_ready 中会用到）
+	add_child(boss)
+	boss.defeated.connect(_on_boss_defeated)
+	boss.submerged.connect(func() -> void:
+		_boss_awaken_left = -1.0
+		_idol_warned = false
+		boss = null)
+	hud.spawn_notice("深渊巨影苏醒了！", UICommon.DANGER)
+
+
+func _on_boss_defeated(pos: Vector2) -> void:
+	hud.spawn_notice("巨影沉入了深渊……战利品浮了上来", UICommon.GOLD)
+	# 巨影战利品袋：用开箱拾取界面取回
+	var trophy := ChestScene.instantiate()
+	trophy.position = pos + Vector2(0, -40)
+	add_child(trophy)
+	trophy.setup_container({
+		"kind": "trophy", "name": "巨影战利品", "search_time": 1.5,
+		"loot": func() -> Array: return ItemDBRes.BOSS_LOOT.duplicate(true),
+		"glow": Color(0.95, 0.78, 0.25, 0.8),
+	})
+
+
+func _on_shark_died(pos: Vector2) -> void:
+	_spawn_leather_pickup(pos)
+
+
+func _spawn_leather_pickup(pos: Vector2) -> void:
+	var pickup := Area2D.new()
+	pickup.position = pos
+	pickup.collision_layer = 0
+	pickup.collision_mask = 2
+	pickup.z_index = 2
+	var cs := CollisionShape2D.new()
+	var shape := RectangleShape2D.new()
+	shape.size = Vector2(40, 40)
+	cs.shape = shape
+	pickup.add_child(cs)
+	var visual := Polygon2D.new()
+	visual.polygon = PackedVector2Array([
+		Vector2(-10, 6), Vector2(-12, -4), Vector2(-4, -10), Vector2(8, -8),
+		Vector2(12, 2), Vector2(4, 8)])
+	visual.color = Color(0.55, 0.38, 0.22)
+	pickup.add_child(visual)
+	pickup.set_meta("picked", false)
+	pickup.body_entered.connect(func(b: Node2D) -> void:
+		if b == player and not pickup.get_meta("picked"):
+			pickup.set_meta("picked", true)
+			GameState.materials["leather"] += 1
+			GameState.materials_changed.emit()
+			Sfx.play("pickup")
+			hud.spawn_notice("获得：皮革", UICommon.CYAN)
+			pickup.queue_free())
+	add_child(pickup)
+	_pickups.append(pickup)
+
+
+func any_boss_active() -> bool:
+	return boss != null and is_instance_valid(boss) and boss.is_threatening()
 
 
 func _on_loot_collected(entries: Array, container: Area2D) -> void:
@@ -337,6 +425,7 @@ func _spawn_sharks() -> void:
 		shark.z_index = 4
 		add_child(shark)
 		shark.setup(cfg[0], cfg[1], cfg[2], player)
+		shark.died.connect(_on_shark_died)
 
 
 func _chosen_zone_solids_patrols() -> Array:
@@ -737,6 +826,9 @@ func _process(delta: float) -> void:
 		if b.position.y < 20.0:
 			b.position.y = 900.0
 			b.position.x = randf_range(100, 5000)
+	for p in _pickups:
+		if is_instance_valid(p) and p.get_child_count() > 1:
+			p.get_child(1).position.y = sin(_shadow_t * 3.0 + p.position.x * 0.1) * 3.0
 	for school in _schools:
 		var node: Node2D = school["node"]
 		node.position.x += school["dir"] * school["speed"] * delta
@@ -757,8 +849,8 @@ func _process(delta: float) -> void:
 				target = Color(0.5, 0.57, 0.7)
 		_canvas_mod.color = _canvas_mod.color.lerp(target, minf(1.0, 2.5 * delta))
 
-	# 鲨鱼追逐紧张低音
-	var threat := not ended and any_shark_alerting()
+	# 鲨鱼追逐或巨影活跃时的紧张低音
+	var threat: bool = (not ended and any_shark_alerting()) or any_boss_active()
 	if threat and not _tension_on:
 		_tension_on = true
 		Sfx.play_tension()

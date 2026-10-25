@@ -94,6 +94,20 @@ const UPGRADES := {
 
 const BOAT_REQUIREMENT := {"wood": 2, "iron": 1, "canvas": 1}
 
+## 兵器打造（工作台）
+const HARPOON_CRAFT := {"iron": 2, "wood": 1}
+
+## 鲨鱼击杀掉落
+const SHARK_DROP := "leather"
+
+## 深渊巨影击杀掉落
+const BOSS_LOOT := [
+	{"id": "cursed_idol", "quality": "pristine"},
+	{"id": "gold_cup", "quality": "fine"},
+	{"mat": "leather"},
+	{"mat": "leather"},
+]
+
 # 各区域宝物出现权重（宝箱内物品的类型分布，区域按 x 坐标划分）
 const ZONE_WEIGHTS := {
 	"A": {"old_coin": 0.10, "bronze_coins": 0.55, "silver_platter": 0.35},

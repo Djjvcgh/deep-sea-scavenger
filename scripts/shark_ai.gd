@@ -3,8 +3,9 @@ extends CharacterBody2D
 ## 用 RayCast2D 视线检测实现掩体躲避；接触玩家时造成伤害。
 
 signal state_changed(new_state: int)
+signal died(pos: Vector2)
 
-enum State { PATROL, ALERT, CHASE, RETURN }
+enum State { PATROL, ALERT, CHASE, RETURN, FLEE }
 
 const BalanceRes := preload("res://scripts/balance.gd")
 
@@ -13,12 +14,18 @@ var patrol_max_x := 600.0
 var patrol_y := 500.0
 var state: int = State.PATROL
 var player: CharacterBody2D = null
+var hp: int = BalanceRes.SHARK_HP
+var dead := false
+var hit_radius := 44.0
 
 var _dir := 1.0
 var _alert_left := 0.0
 var _lose_sight_left := 0.0
 var _attack_cd := 0.0
 var _retreat_left := 0.0
+var _flee_left := 0.0
+var _flee_dir := Vector2.ZERO
+var _flash_left := 0.0
 var _anim_t := 0.0
 
 @onready var los: RayCast2D = $Los
@@ -43,13 +50,42 @@ func _ready() -> void:
 	los.collide_with_areas = false
 	bite.collision_mask = 2
 	add_to_group("sharks")
+	add_to_group("enemies")
 	_build_visual()
 
 
+## 鱼叉刺击命中。生命归零时死亡（由海底场景生成掉落）。
+func take_damage(amount: int, from_pos: Vector2) -> void:
+	if dead:
+		return
+	hp -= amount
+	_flash_left = 0.2
+	if hp <= 0:
+		dead = true
+		state = State.PATROL   # 停止 AI 决策（_physics_process 开头拦截）
+		collision_layer = 0
+		bite.monitoring = false
+		died.emit(global_position)
+		return
+	# 受击逃窜：背向来伤方向高速脱离
+	_flee_dir = (global_position - from_pos).normalized()
+	if _flee_dir == Vector2.ZERO:
+		_flee_dir = Vector2.RIGHT
+	_flee_left = BalanceRes.SHARK_FLEE_TIME
+	_enter(State.FLEE)
+
+
 func _physics_process(delta: float) -> void:
+	if dead:
+		# 死亡下沉：缓缓坠落并淡出
+		position.y += 30.0 * delta
+		modulate.a = maxf(0.0, modulate.a - delta / 1.5)
+		rotation += delta * 0.4
+		return
 	_anim_t += delta
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_retreat_left = maxf(0.0, _retreat_left - delta)
+	_flash_left = maxf(0.0, _flash_left - delta)
 	var target_valid: bool = player != null and is_instance_valid(player) and not player.dead
 	var can_see: bool = target_valid and _see_player()
 	var dist := global_position.distance_to(player.global_position) if target_valid else INF
@@ -108,11 +144,19 @@ func _physics_process(delta: float) -> void:
 				_alert_left = BalanceRes.SHARK_ALERT_TIME
 				Sfx.play("alert", -4.0)
 				_enter(State.ALERT)
+		State.FLEE:
+			# 受击逃窜：无视视线，背向玩家高速脱离
+			velocity = velocity.move_toward(_flee_dir * BalanceRes.SHARK_CHASE_SPEED * 0.9, 500.0 * delta)
+			_flee_left -= delta
+			if _flee_left <= 0.0:
+				_lose_sight_left = BalanceRes.SHARK_LOSE_SIGHT_TIME
+				_enter(State.RETURN)
 
 	move_and_slide()
 
-	# 咬击：与玩家接触且冷却结束（脱离期不咬）。
-	if _attack_cd <= 0.0 and _retreat_left <= 0.0 and target_valid and bite.overlaps_body(player):
+	# 咬击：与玩家接触且冷却结束（脱离期/逃窜期不咬）。
+	if _attack_cd <= 0.0 and _retreat_left <= 0.0 and state != State.FLEE \
+			and target_valid and bite.overlaps_body(player):
 		_attack_cd = BalanceRes.SHARK_ATTACK_COOLDOWN
 		_retreat_left = BalanceRes.SHARK_BITE_RETREAT
 		player.take_damage(BalanceRes.SHARK_DAMAGE, global_position)
@@ -138,6 +182,9 @@ func is_threatening() -> bool:
 
 
 func _animate() -> void:
+	if dead:
+		visual.modulate = Color(0.5, 0.45, 0.5, 0.8)
+		return
 	if absf(velocity.x) > 8.0:
 		visual.scale.x = signf(velocity.x)
 	var rate := 10.0 if state == State.CHASE else 6.0
@@ -145,13 +192,14 @@ func _animate() -> void:
 	_mark.visible = is_threatening()
 	if _mark.visible:
 		_mark.position.y = -40.0 + sin(_anim_t * 8.0) * 3.0
-	match state:
-		State.CHASE:
-			visual.modulate = Color(1.0, 0.55, 0.55)
-		State.ALERT:
-			visual.modulate = Color(1.0, 0.8, 0.55)
-		_:
-			visual.modulate = Color.WHITE
+	if _flash_left > 0.0:
+		visual.modulate = Color(1, 0.25, 0.25)
+	elif state == State.CHASE:
+		visual.modulate = Color(1.0, 0.55, 0.55)
+	elif state == State.ALERT:
+		visual.modulate = Color(1.0, 0.8, 0.55)
+	else:
+		visual.modulate = Color.WHITE
 
 
 func _build_visual() -> void:

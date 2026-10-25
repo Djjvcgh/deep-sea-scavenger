@@ -41,6 +41,8 @@ const SHARK_GIVEUP_DIST_MULT := 1.25   # 玩家距离超过发现范围×该值�
 const SHARK_DAMAGE := 1
 const SHARK_ATTACK_COOLDOWN := 1.6     # 同一条鲨鱼两次咬击的最小间隔
 const SHARK_BITE_RETREAT := 1.1        # 咬人后强制脱离时间（给玩家脱身窗口）
+const SHARK_HP := 3                    # 鲨鱼生命（鱼叉 3 次刺击击杀）
+const SHARK_FLEE_TIME := 1.5           # 被刺后的逃窜时间
 const BITE_KNOCKBACK := 260.0          # 被咬时玩家的击退速度
 
 # ---- 下潜刷新 ----
@@ -50,3 +52,19 @@ const CONTAINER_COUNTS := {"A": 6, "B": 5, "C": 4}     # 小型容器（海贝/�
 # ---- 节奏 ----
 const FAIL_RESULT_DELAY := 0.7    # 失败后延迟多少秒弹出结算
 const DIVE_TIME_LIMIT := 900.0    # 每次下潜时限（秒），归零 = 撤离窗口关闭
+
+# ---- 兵器（鱼叉） ----
+const HARPOON_DAMAGE := 1
+const HARPOON_COOLDOWN := 0.7     # 刺击间隔（秒）
+const HARPOON_STAMINA := 2.5      # 每次刺击体力消耗
+const HARPOON_RANGE := 150.0      # 自动瞄准的搜索半径
+const HARPOON_REACH := 120.0      # 刺击判定中心距离
+
+# ---- 深渊巨影（克苏鲁级 Boss） ----
+const BOSS_AWAKEN_DELAY := 12.0   # 携带神像后多少秒苏醒
+const BOSS_HP := 16
+const BOSS_SLAM_INTERVAL := 4.5   # 触拍间隔（秒）
+const BOSS_TELEGRAPH := 1.1       # 预警圈持续时间（秒）
+const BOSS_SLAM_RADIUS := 110.0   # 触拍伤害半径
+const BOSS_DAMAGE := 1
+const BOSS_DRIFT_SPEED := 26.0    # 巨影逼近速度

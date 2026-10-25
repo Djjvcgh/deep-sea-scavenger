@@ -9,6 +9,7 @@ var _rows_box: VBoxContainer
 var _credits_label: Label
 var _flash_label: Label
 var _bag_box: VBoxContainer
+var _weapon_box: VBoxContainer
 
 
 func _ready() -> void:
@@ -52,6 +53,12 @@ func _build() -> void:
 	_bag_box = VBoxContainer.new()
 	_bag_box.add_theme_constant_override("separation", 6)
 	box.add_child(_bag_box)
+
+	box.add_child(UICommon.vspace(4))
+	box.add_child(UICommon.label("兵器打造（对抗深海生物）", 20, UICommon.CYAN))
+	_weapon_box = VBoxContainer.new()
+	_weapon_box.add_theme_constant_override("separation", 6)
+	box.add_child(_weapon_box)
 
 	_flash_label = UICommon.label(" ", 18, UICommon.GOOD)
 	box.add_child(_flash_label)
@@ -104,6 +111,43 @@ func _refresh() -> void:
 		_rows_box.add_child(row)
 
 	_refresh_bag()
+	_refresh_weapon()
+
+
+func _refresh_weapon() -> void:
+	for c in _weapon_box.get_children():
+		c.queue_free()
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 10)
+	if GameState.has_harpoon:
+		var owned := UICommon.label("鱼叉 —— 已打造（空格键刺击）", 17, UICommon.GOOD)
+		owned.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_child(owned)
+	else:
+		var name_label := UICommon.label("鱼叉：空格键刺击，可击杀鲨鱼、惊退巨影", 17)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_child(name_label)
+		var parts: Array = []
+		var enough := true
+		for mat in ItemDBRes.HARPOON_CRAFT:
+			var need := int(ItemDBRes.HARPOON_CRAFT[mat])
+			var have := int(GameState.materials[mat])
+			if have < need:
+				enough = false
+			parts.append("%s %d/%d" % [ItemDBRes.MATERIALS[mat]["name"], have, need])
+		line.add_child(UICommon.label(" / ".join(parts), 15,
+			UICommon.GOOD if enough else UICommon.DIM))
+		var craft := UICommon.button("打造", 16)
+		craft.disabled = not enough
+		craft.pressed.connect(_craft_harpoon)
+		line.add_child(craft)
+	_weapon_box.add_child(line)
+
+
+func _craft_harpoon() -> void:
+	if GameState.craft_harpoon():
+		_flash("鱼叉打造完成！空格键刺击")
+		Sfx.play("build", -4.0)
 
 
 func _refresh_bag() -> void:

@@ -101,6 +101,16 @@ func _test_item_db() -> int:
 		and not ItemDB.UPGRADES.has("bag"), "升级表：脚蹼/护符（背包已改为打造）")
 	_check(ItemDB.BOAT_REQUIREMENT["wood"] == 2 and ItemDB.BOAT_REQUIREMENT["iron"] == 1
 		and ItemDB.BOAT_REQUIREMENT["canvas"] == 1, "造船需求 木2/铁1/帆1")
+	_check(ItemDB.HARPOON_CRAFT["iron"] == 2 and ItemDB.HARPOON_CRAFT["wood"] == 1,
+		"鱼叉打造需求 铁2/木1")
+	_check(ItemDB.SHARK_DROP == "leather", "鲨鱼掉落皮革")
+	for entry in ItemDB.BOSS_LOOT:
+		if entry.has("id"):
+			_check_quiet(T.has(entry["id"]), "巨影掉落宝物 %s 存在" % entry["id"])
+			_check_quiet(ItemDB.QUALITIES.has(entry["quality"]), "巨影掉落品质 %s 有效" % entry["quality"])
+		elif entry.has("mat"):
+			_check_quiet(ItemDB.MATERIALS.has(entry["mat"]), "巨影掉落材料 %s 存在" % entry["mat"])
+	_check(quiet_fail == 0, "巨影掉落表合法")
 	# 各区域权重合计为1
 	for zone in ItemDB.ZONE_WEIGHTS:
 		var total := 0.0
@@ -225,6 +235,17 @@ func _test_game_state() -> int:
 		"投入铁件与帆布")
 	_check(gs.boat_completed and is_equal_approx(gs.boat_progress(), 1.0), "材料齐全造船完成")
 	_check(gs.invest_material("wood", 1) == 0, "造船完成后不能再投入")
+
+	# 鱼叉打造
+	gs.reset_defaults()
+	_check(not gs.has_harpoon, "初始无鱼叉")
+	gs.materials["iron"] = 1
+	_check(not gs.craft_harpoon(), "材料不足不能打造鱼叉")
+	gs.materials["iron"] = 2
+	gs.materials["wood"] = 1
+	_check(gs.craft_harpoon() and gs.has_harpoon, "鱼叉打造成功")
+	_check(not gs.craft_harpoon(), "鱼叉只能打造一次")
+	_check(gs.materials["iron"] == 0 and gs.materials["wood"] == 0, "打造扣减材料")
 	return 0
 
 
@@ -244,6 +265,7 @@ func _test_save_roundtrip() -> int:
 	gs.bag_tier = 1
 	gs.upgrades = {"fins": false, "amulet": true}
 	gs.boat_invested = {"wood": 1, "iron": 0, "canvas": 0}
+	gs.has_harpoon = true
 	gs.lost_cache = {"x": 4200.0, "y": 860.0, "items": [{"id": "silver_platter", "quality": "standard"}]}
 	_check(sm.save_game(gs.serialize()), "存档写入成功")
 
@@ -254,6 +276,7 @@ func _test_save_roundtrip() -> int:
 	_check(gs.bag_tier == 1 and gs.bag_capacity() == 10, "背包档位读档正确")
 	_check(gs.upgrades["amulet"] and not gs.upgrades["fins"], "升级状态读档正确")
 	_check(gs.lost_cache["items"].size() == 1 and gs.lost_cache["x"] == 4200.0, "遗落物缓存读档正确")
+	_check(gs.has_harpoon, "鱼叉拥有状态读档正确")
 
 	# v1 旧存档迁移：字符串物品 + 扩容背包升级
 	var path: String = sm.get("save_path")

@@ -44,6 +44,16 @@ func _initialize() -> void:
 		[_wobble_sine(55.0, 4.0, 0.22), 0.0],
 		[_wobble_sine(55.75, 4.0, 0.2), 0.0],
 		[_tone(110.0, 4.0, 0.06, "saw", 0.5, 0.5), 0.0]]))
+	_write("stab.wav", _mix([
+		[_noise(0.12, 0.45, 0.7), 0.0],
+		[_tone(320.0, 0.1, 0.3, "saw", 0.002, 0.06, 90.0), 0.0]]))
+	_write("slam.wav", _mix([
+		[_tone(70.0, 0.35, 0.6, "sine", 0.002, 0.2, 38.0), 0.0],
+		[_noise(0.2, 0.4, 0.25), 0.0]]))
+	_write("boss_warn.wav", _mix([
+		[_tone(82.0, 0.9, 0.4, "saw", 0.05, 0.3, 55.0), 0.0],
+		[_tone(41.0, 0.9, 0.35, "sine", 0.05, 0.3), 0.0]]))
+	_write("boss_die.wav", _tone(110.0, 1.4, 0.45, "saw", 0.05, 0.7, 30.0))
 	_write("ambient_underwater.wav", _mix([
 		[_ambient_base(4.0, 0.05, 0.22), 0.0],
 		[_wobble_sine(58.0, 4.0, 0.07), 0.0]]))
