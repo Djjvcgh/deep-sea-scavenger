@@ -1646,12 +1646,15 @@ func _diver_swim(frame: int) -> void:
 func _diver_walk(frame: int) -> void:
 	var img := _img(16, 22)
 	var stride: int = [1, 0, -1, 0][frame]
-	# 头（额上面镜带）
+	# 头（额上面镜带 + 右缘面镜玻璃：面朝右）
 	for x in range(4, 12):
 		for y in range(2, 9):
 			if Vector2(x - 8.0, y - 5.0).length() <= 3.2:
 				_px(img, x, y, SKIN)
 	_rect(img, 6, 2, 5, 1, MASK_G)
+	_px(img, 10, 4, MASK_G)
+	_px(img, 10, 5, MASK_G)
+	_px(img, 11, 5, Color("0F2A30"))
 	# 躯干
 	for y in range(8, 16):
 		for x in range(6, 11):
@@ -1659,9 +1662,9 @@ func _diver_walk(frame: int) -> void:
 	# 腰带与扣
 	_rect(img, 6, 12, 5, 1, Color("3A2E1E"))
 	_px(img, 8, 12, GOLD_D)
-	# 背上气瓶（右肩后侧露出）
-	_rect(img, 11, 8, 2, 6, TANK_S)
-	_px(img, 11, 8, Color("C9D2DA"))
+	# 背上气瓶（面朝右 → 背在左侧露出）
+	_rect(img, 3, 8, 2, 6, TANK_S)
+	_px(img, 3, 8, Color("C9D2DA"))
 	# 手臂随步伐轻摆
 	_rect(img, 10 + stride, 10, 2, 4, SUIT_D)
 	_px(img, 10 + stride, 14, SKIN)
