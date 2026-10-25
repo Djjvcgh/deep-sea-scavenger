@@ -132,6 +132,7 @@ func _refresh() -> void:
 		if entry.has("mat"):
 			var mat := String(entry["mat"])
 			var mat_info: Dictionary = ItemDBRes.MATERIALS[mat]
+			row.add_child(UICommon.quality_icon(mat, UICommon.CYAN))
 			var mlabel := UICommon.label("材料 · %s" % mat_info["name"], 18, UICommon.CYAN)
 			mlabel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(mlabel)
@@ -144,13 +145,7 @@ func _refresh() -> void:
 			var info: Dictionary = ItemDBRes.TREASURES[entry["id"]]
 			var q: Dictionary = ItemDBRes.QUALITIES[entry["quality"]]
 			var slots := int(info["slots"])
-			var swatch := Panel.new()
-			swatch.custom_minimum_size = Vector2(14, 14)
-			var sb := StyleBoxFlat.new()
-			sb.bg_color = q["color"]
-			sb.set_corner_radius_all(3)
-			swatch.add_theme_stylebox_override("panel", sb)
-			row.add_child(swatch)
+			row.add_child(UICommon.quality_icon(entry["id"], q["color"]))
 			var name_label := UICommon.label("%s·%s" % [q["name"], info["name"]], 18, q["color"])
 			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(name_label)

@@ -2,6 +2,14 @@ class_name ItemDB
 ## 宝物 / 品质 / 物资 / 容器 / 背包档位 / 升级 / 造船 / 刷新权重 数据表。
 ## 所有经济数值集中在此，不要在拾取、交易逻辑中硬编码。
 
+## 物品图标目录：图标按物品 ID 命名（<id>.png，64×64 像素风），
+## 由 tests/gen_icons.gd 程序绘制生成，品质只通过边框颜色区分。
+const ICON_DIR := "res://assets/icons/items/"
+
+
+static func icon_path(id: String) -> String:
+	return ICON_DIR + id + ".png"
+
 ## 品质体系（三角洲式摸金）：实例价值 = 基础价值 × 品质倍率
 const QUALITIES := {
 	"worn": {"name": "破损", "mult": 0.6, "color": Color(0.55, 0.55, 0.6)},

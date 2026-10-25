@@ -114,6 +114,7 @@ func _refresh() -> void:
 		var info: Dictionary = ItemDBRes.TREASURES[g["id"]]
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
+		row.add_child(UICommon.quality_icon(g["id"], q["color"]))
 		var name_label := UICommon.label("%s·%s ×%d" % [q["name"], info["name"], g["count"]],
 			18, q["color"])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL

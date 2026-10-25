@@ -14,6 +14,7 @@ func _initialize() -> void:
 	failures += _test_game_state()
 	failures += _test_save_roundtrip()
 	failures += _test_map_data()
+	failures += _test_icons()
 	failures += _test_loot_randomness()
 	_print_result()
 	quit(1 if failures > 0 else 0)
@@ -360,6 +361,29 @@ func _test_map_data() -> int:
 	_check(variant_count == 15, "共 15 套布局变体（3 区域 × 5）")
 	_check(quiet_fail == 0, "变体数据全部合法")
 	return 0
+
+
+func _test_icons() -> int:
+	print("[物品图标]")
+	var bad := 0
+	for id in ItemDB.TREASURES:
+		if not _icon_ok(id):
+			_check_quiet(false, "宝物 %s 图标缺失或尺寸不对（%s）" % [id, ItemDB.icon_path(id)])
+			bad += 1
+	for id in ItemDB.MATERIALS:
+		if not _icon_ok(id):
+			_check_quiet(false, "材料 %s 图标缺失或尺寸不对（%s）" % [id, ItemDB.icon_path(id)])
+			bad += 1
+	_check(bad == 0, "全部宝物与材料都有 64×64 图标")
+	return 0
+
+
+func _icon_ok(id: String) -> bool:
+	var path: String = ItemDB.icon_path(id)
+	if not FileAccess.file_exists(path):
+		return false
+	var tex: Texture2D = load(path)
+	return tex != null and tex.get_width() == 64 and tex.get_height() == 64
 
 
 func _test_loot_randomness() -> int:

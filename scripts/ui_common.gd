@@ -39,6 +39,36 @@ static func dim_overlay() -> ColorRect:
 	return rect
 
 
+## 物品图标（按物品 ID 关联 res://assets/icons/items/<id>.png）。
+static func item_icon(item_id: String, size := 34.0) -> TextureRect:
+	var tr := TextureRect.new()
+	tr.texture = load(ItemDB.icon_path(item_id))
+	tr.custom_minimum_size = Vector2(size, size)
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return tr
+
+
+## 带品质边框的物品图标：品质用边框颜色表达，不另做品质贴图。
+static func quality_icon(item_id: String, border: Color, size := 34.0) -> PanelContainer:
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.08, 0.09, 0.11, 0.85)
+	sb.border_color = border
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(5)
+	sb.content_margin_left = 3
+	sb.content_margin_right = 3
+	sb.content_margin_top = 3
+	sb.content_margin_bottom = 3
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.add_child(item_icon(item_id, size - 10.0))
+	panel.custom_minimum_size = Vector2(size, size)
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return panel
+
+
 ## 常用弹窗容器：居中容器（内含面板，用 get_meta("panel") 取面板）。
 static func popup_panel(width: float) -> CenterContainer:
 	var overlay_root := CenterContainer.new()

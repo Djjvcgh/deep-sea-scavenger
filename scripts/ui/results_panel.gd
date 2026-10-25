@@ -90,6 +90,7 @@ func open(success: bool, items: Array, total_value: int, elapsed_sec := -1.0,
 		var info: Dictionary = ItemDBRes.TREASURES[g["id"]]
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
+		row.add_child(UICommon.quality_icon(g["id"], q["color"], 40.0))
 		var name_label := UICommon.label("%s·%s ×%d" % [q["name"], info["name"], g["count"]],
 			19, q["color"])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -81,13 +81,7 @@ func _refresh() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 
-		var swatch := Panel.new()
-		swatch.custom_minimum_size = Vector2(14, 14)
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = q["color"]
-		sb.set_corner_radius_all(3)
-		swatch.add_theme_stylebox_override("panel", sb)
-		row.add_child(swatch)
+		row.add_child(UICommon.quality_icon(entry["id"], q["color"]))
 
 		var name_label := UICommon.label("%s·%s" % [q["name"], info["name"]], 18, q["color"])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
