@@ -26,22 +26,22 @@ func interact_prompt() -> String:
 	return prompt_text
 
 
-## 视觉：木牌 + 名称标签（供玩家识别交互点）。
+## 视觉：像素木牌贴图 + 名称标签（功能区本体由主题模块表达，木牌只是辅助定位）。
 func setup_visual(text: String) -> void:
 	z_index = 4
-	var post := Polygon2D.new()
-	post.polygon = PackedVector2Array([Vector2(-3, 0), Vector2(3, 0), Vector2(3, 46), Vector2(-3, 46)])
-	post.color = Color(0.4, 0.28, 0.16)
-	add_child(post)
-	var board := Polygon2D.new()
-	board.polygon = PackedVector2Array([Vector2(-22, -12), Vector2(22, -12), Vector2(22, 8), Vector2(-22, 8)])
-	board.color = Color(0.55, 0.4, 0.22)
-	add_child(board)
+	var sign := Sprite2D.new()
+	sign.texture = load("res://assets/scenery/blacktide/signpost.png")
+	sign.position = Vector2(0, 22)
+	sign.scale = Vector2.ONE * 2.0
+	sign.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	add_child(sign)
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 16)
-	label.add_theme_color_override("font_color", Color(0.12, 0.08, 0.04))
-	label.position = Vector2(-21, -10)
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_color", Color(0.98, 0.93, 0.82))
+	label.add_theme_constant_override("outline_size", 5)
+	label.add_theme_color_override("font_outline_color", Color(0.12, 0.08, 0.04, 0.9))
+	label.position = Vector2(-24, 10)
 	add_child(label)
 
 

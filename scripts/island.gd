@@ -4,6 +4,7 @@ extends Node2D
 ## 岛屿横向 2600px，摄像机平滑跟随（摄像机由 player.gd 持有，limit 限制在世界内）。
 
 const PlayerScript := preload("res://scripts/player.gd")
+const ThemeRes := preload("res://scripts/level_theme.gd")
 const PlayerScene := preload("res://scenes/player.tscn")
 const PauseScene := preload("res://scenes/ui/pause_menu.tscn")
 const InteractableScript := preload("res://scripts/island_interactable.gd")
@@ -27,6 +28,7 @@ var _status_label: Label
 var _panels: Array = []
 var _boat_visual: Node2D
 var _waves: Array = []
+var _flame: Polygon2D
 var _t := 0.0
 
 
@@ -136,6 +138,10 @@ func _add_interactable(text: String, pos: Vector2, cb: Callable) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _flame != null:
+		var f := 1.0 + 0.14 * sin(_t * 9.0) + 0.05 * sin(_t * 15.0)
+		_flame.scale = Vector2(0.9 + 0.12 * sin(_t * 7.0), f)
+		_flame.modulate.a = 0.8 + 0.2 * sin(_t * 11.0)
 	for w in _waves:
 		var line: Line2D = w["line"]
 		var pts: PackedVector2Array = line.points.duplicate()
@@ -185,14 +191,25 @@ func _build_environment() -> void:
 	_build_sea(SEA_RIGHT_START, ISLAND_WIDTH, false)
 
 	for x in [560.0, 1240.0, 1900.0, 2500.0]:
-		_add_palm(x)
+		ThemeRes.sprite(self, "palm", Vector2(x + 26.0, GROUND_Y - 62.0), -9, 2.0,
+			Color.WHITE, (x - 560.0) * 0.0004)
+	# 草地边条压住沙面
+	ThemeRes.tile(self, "grass_edge", "", Rect2(280.0, GROUND_Y - 16.0, ISLAND_WIDTH - 580.0, 32.0),
+		Color.WHITE, -9, 3)
 
-	# 沿途装饰：礁石 / 草丛 / 漂木 / 海星，让 2600px 的行走有内容
-	var decor := [
-		["rock", 700.0], ["grass", 820.0], ["drift", 1130.0], ["grass", 1400.0],
-		["rock", 1750.0], ["grass", 2050.0], ["drift", 2470.0], ["star", 260.0], ["star", 2420.0]]
-	for d in decor:
+	# 沿途装饰：礁石 / 草丛 / 漂木 / 海星（贴图化）
+	for d in [["rock", 700.0], ["grass", 820.0], ["drift", 1130.0], ["grass", 1400.0],
+			["rock", 1750.0], ["grass", 2050.0], ["drift", 2470.0], ["star", 260.0], ["star", 2420.0]]:
 		_add_decor(d[0], d[1])
+
+	# 功能区模块：下潜栈道 / 商人摊位 / 工作区 / 船坞 / 营火（视觉可识别，不依赖木牌）
+	ThemeRes.island_pier(self, 24.0, 300.0, GROUND_Y - 12.0)
+	ThemeRes.sprite(self, "buoy", Vector2(90.0, 470.0), -2)
+	ThemeRes.glow(self, Vector2(90.0, 454.0), 20.0, 13.0, Color(0.98, 0.85, 0.4, 0.26), -1)
+	ThemeRes.island_merchant(self, Vector2(950.0, GROUND_Y))
+	ThemeRes.island_workshop(self, Vector2(1600.0, GROUND_Y))
+	ThemeRes.island_dock(self, Vector2(2280.0, GROUND_Y - 8.0))
+	_flame = ThemeRes.island_campfire(self, Vector2(1290.0, GROUND_Y - 2.0))
 
 
 func _build_sea(x0: float, x1: float, has_dive_beach: bool) -> void:
@@ -220,41 +237,18 @@ func _build_sea(x0: float, x1: float, has_dive_beach: bool) -> void:
 		_waves.append({"line": line, "base_y": y, "phase": i * 2.1 + (0.0 if has_dive_beach else 1.3)})
 
 
-func _add_palm(x: float) -> void:
-	var trunk := Line2D.new()
-	trunk.points = PackedVector2Array([Vector2(x, GROUND_Y), Vector2(x + 14, GROUND_Y - 60), Vector2(x + 34, GROUND_Y - 100)])
-	trunk.width = 8.0
-	trunk.default_color = Color(0.4, 0.28, 0.16)
-	trunk.z_index = -10
-	add_child(trunk)
-	var leaves := Polygon2D.new()
-	leaves.polygon = PackedVector2Array([
-		Vector2(x + 34, GROUND_Y - 100), Vector2(x + 2, GROUND_Y - 116), Vector2(x + 64, GROUND_Y - 118),
-		Vector2(x + 40, GROUND_Y - 84), Vector2(x + 74, GROUND_Y - 96), Vector2(x + 44, GROUND_Y - 76)])
-	leaves.color = Color(0.16, 0.45, 0.22)
-	leaves.z_index = -10
-	add_child(leaves)
-
-
 func _add_decor(kind: String, x: float) -> void:
 	var node := Node2D.new()
 	node.position = Vector2(x, GROUND_Y)
 	node.z_index = -9
 	match kind:
 		"rock":
-			var rock := Polygon2D.new()
-			rock.polygon = PackedVector2Array([
-				Vector2(-18, 0), Vector2(-12, -14), Vector2(2, -18), Vector2(16, -8), Vector2(14, 0)])
-			rock.color = Color(0.52, 0.52, 0.55)
-			node.add_child(rock)
+			var spr := ThemeRes.sprite(node, "rock_b", Vector2(0, -20.0), 0, 1.5)
+			spr.flip_h = fmod(x, 200.0) < 100.0
 		"grass":
-			for i in 4:
-				var blade := Line2D.new()
-				var dx := -9.0 + i * 6.0
-				blade.points = PackedVector2Array([Vector2(dx, 0), Vector2(dx + 3.0 * (1 if i % 2 == 0 else -1), -14.0 - 3.0 * (i % 3))])
-				blade.width = 2.0
-				blade.default_color = Color(0.35, 0.55, 0.26)
-				node.add_child(blade)
+			for i in 3:
+				var spr2 := ThemeRes.sprite(node, "grass_tuft", Vector2(-14.0 + i * 14.0, -6.0), 0, 2.0)
+				spr2.flip_h = i % 2 == 0
 		"drift":
 			var log := Polygon2D.new()
 			log.polygon = PackedVector2Array([
@@ -282,17 +276,21 @@ func _build_ground() -> void:
 	cs.position = Vector2(ISLAND_WIDTH * 0.5, GROUND_Y + (720 - GROUND_Y) * 0.5)
 	body.add_child(cs)
 
-	var sand := Polygon2D.new()
-	sand.polygon = PackedVector2Array([
-		Vector2(0, GROUND_Y), Vector2(ISLAND_WIDTH, GROUND_Y), Vector2(ISLAND_WIDTH, 720), Vector2(0, 720)])
-	sand.color = Color(0.76, 0.66, 0.45)
-	body.add_child(sand)
-
-	var grass := Line2D.new()
-	grass.points = PackedVector2Array([Vector2(0, GROUND_Y), Vector2(ISLAND_WIDTH, GROUND_Y)])
-	grass.width = 6.0
-	grass.default_color = Color(0.4, 0.6, 0.3)
-	body.add_child(grass)
+	# 沙面贴图化：逐行加深（视觉层，逻辑碰撞矩形不变）
+	var art := Node2D.new()
+	art.name = "Art"
+	var row := 0
+	var y := GROUND_Y
+	while y < 720.0:
+		var dim := 1.0 - 0.09 * row
+		var x := 0.0
+		while x < ISLAND_WIDTH:
+			ThemeRes.sprite(art, "sand_tile", Vector2(x + 96.0, y + 22.0), 0, 2.0,
+				Color(dim, dim, minf(1.0, dim + 0.02)))
+			x += 192.0
+		y += 44.0
+		row += 1
+	body.add_child(art)
 
 	# 屏幕两侧隐形边界墙：防止走出世界坠落消失
 	for wx in [-20.0, ISLAND_WIDTH + 20.0]:
@@ -327,31 +325,14 @@ func _build_props() -> void:
 	merchant.add_child(eye)
 	add_child(merchant)
 
-	# 装备工作台：木桌与工具
-	var bench := Node2D.new()
-	bench.position = Vector2(1600, 540)
-	bench.z_index = 4
-	var table := Polygon2D.new()
-	table.polygon = PackedVector2Array([Vector2(-30, -14), Vector2(30, -14), Vector2(26, 20), Vector2(-26, 20)])
-	table.color = Color(0.45, 0.3, 0.16)
-	bench.add_child(table)
-	var tool := Polygon2D.new()
-	tool.polygon = PackedVector2Array([Vector2(-8, -22), Vector2(-2, -22), Vector2(0, -14), Vector2(-10, -14)])
-	tool.color = Color(0.55, 0.57, 0.6)
-	bench.add_child(tool)
-	add_child(bench)
-
 	# 船坞：未完成的小帆船（随进度显形），滑道朝右海湾
 	_boat_visual = Node2D.new()
 	_boat_visual.position = Vector2(2280, 552)
 	_boat_visual.z_index = 4
 	add_child(_boat_visual)
 	_refresh_boat_visual()
-	var slipway := Polygon2D.new()
-	slipway.polygon = PackedVector2Array([Vector2(2210, 560), Vector2(2350, 560), Vector2(2340, 568), Vector2(2220, 568)])
-	slipway.color = Color(0.5, 0.42, 0.3)
-	slipway.z_index = 3
-	add_child(slipway)
+	# 滑道甲板（入水轨道）
+	ThemeRes.sprite(self, "deck_plank", Vector2(2276.0, 572.0), 3, 1.3, Color(0.92, 0.86, 0.78))
 
 
 func _refresh_boat_visual() -> void:
@@ -391,6 +372,7 @@ func _build_status_bar() -> void:
 	add_child(layer_ui)
 	var bar := PanelContainer.new()
 	bar.position = Vector2(12, 8)
+	bar.add_theme_stylebox_override("panel", UICommon.wood_stylebox(0.92))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	bar.add_child(box)

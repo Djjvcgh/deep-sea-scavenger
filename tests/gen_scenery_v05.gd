@@ -89,6 +89,24 @@ func _initialize() -> void:
 	_net()
 	_wood_panel()
 	_far_rock()
+	# ---- 正式关卡模块：岛屿 / 浅海 / 洞穴 / 深层 ----
+	_palm()
+	_grass_tuft()
+	_grass_edge()
+	_tent_stall()
+	_workbench()
+	_signpost()
+	_campfire()
+	_cave_wall()
+	_glow_algae()
+	_coral(0)
+	_coral(1)
+	_corrupt_rock()
+	_altar()
+	_seaweed_black()
+	_wreck_debris()
+	_pier_post()
+	_wood_pile()
 	print("场景贴图生成完成：%s / %s" % [OUT, OUT_HUD])
 	quit(0)
 
@@ -1228,3 +1246,333 @@ func _far_rock() -> void:
 	for i in 6:
 		_px(img, r.randi_range(4, 214), r.randi_range(10, 50), Color("24404F"))
 	_save(img, "far_rock")
+
+
+# ==================== 正式关卡模块（岛屿/浅海/洞穴/深层） ====================
+
+## 椰子树。
+func _palm() -> void:
+	var img := _img(30, 66)
+	var r := _rng("palm")
+	for i in 34:
+		var t := float(i) / 33.0
+		var x := 13.0 + sin(t * 1.9) * 4.0
+		var y := 62.0 - t * 56.0
+		var col := WOOD_D.lerp(WOOD, t * 0.4)
+		_rect(img, int(x - 2), int(y), 4, 2, _jit(col, r, 0.03))
+		if i % 6 == 3:
+			_px(img, int(x), int(y), WOOD_DD)
+	for a in [-2.6, -1.9, -1.2, -0.5, 0.2, 0.9, 1.6, 2.3]:
+		var dir := Vector2(cos(a), -absf(sin(a)) * 0.5 - 0.4).normalized()
+		for t in 13:
+			var p := Vector2(14.0, 8.0) + dir * t * 1.15
+			_px(img, int(p.x), int(p.y), Color("2E6E3A") if t % 4 else Color("3E8A4A"))
+			if t > 8:
+				_px(img, int(p.x), int(p.y + 1), Color("245630"))
+	_px(img, 12, 12, WOOD_DD)
+	_px(img, 16, 13, WOOD_DD)
+	_outline(img)
+	_save(img, "palm")
+
+
+## 岛上草丛。
+func _grass_tuft() -> void:
+	var img := _img(18, 12)
+	var r := _rng("grass_tuft")
+	for i in 6:
+		var bx := 2 + i * 3
+		var h := 5 + r.randi_range(0, 4)
+		var col := Color("4E8A3E") if i % 2 else Color("3E7232")
+		for t in h:
+			var sway := int(round(sin(t * 0.8 + i) * 1.2))
+			_px(img, bx + sway, 10 - t, col if t < h - 2 else Color("6EA84E"))
+	_save(img, "grass_tuft")
+
+
+## 草地边条（平铺件：草皮压在沙上）。
+func _grass_edge() -> void:
+	var img := _img(96, 14)
+	var r := _rng("grass_edge")
+	for x in 96:
+		var depth := 6 + int(3.0 * absf(sin(x * 0.35)))
+		for y in depth:
+			var col: Color = Color("3E7232").lerp(Color("2E5A26"), float(y) / 8.0)
+			_px(img, x, y, _jit(col, r, 0.04))
+		if x % 3 == 0:
+			_px(img, x, depth, Color("5EA046"))
+			_px(img, x, depth + 1, Color("8A7C5E"))
+	_save(img, "grass_edge")
+
+
+## 商人摊位：条纹雨棚 + 柜台 + 货品。
+func _tent_stall() -> void:
+	var img := _img(66, 54)
+	var r := _rng("tent_stall")
+	for post_x in [4, 58]:
+		_rect(img, post_x, 16, 4, 34, WOOD_D)
+		_px(img, post_x, 16, WOOD_L)
+	for row in 3:
+		var y := 12 + row * 4
+		var inset := (2 - row) * 2
+		for x in 62 - inset * 2:
+			var stripe: Color = RED if ((x + row * 8) / 8) % 2 == 0 else Color("E8DCC4")
+			_px(img, 2 + inset + x, y, stripe if row < 2 else stripe.darkened(0.15))
+	for x in 66:
+		if x % 2 == 0:
+			_px(img, x, 24, Color("E8DCC4"))
+	_grain(img, r, WOOD, 4, 42, 58, 6, 0.03)
+	for x in 58:
+		_px(img, x + 4, 42, WOOD_L)
+		_px(img, x + 4, 47, WOOD_DD)
+	_rect(img, 10, 34, 3, 8, Color("2E4A3A"))
+	_px(img, 11, 33, Color("2E4A3A"))
+	_rect(img, 40, 36, 8, 6, WOOD_D)
+	_px(img, 43, 38, GOLD)
+	_px(img, 44, 38, GOLD_L)
+	_rect(img, 24, 37, 5, 5, Color("5C4428"))
+	_outline(img)
+	_save(img, "tent_stall")
+
+
+## 装备工作台：厚桌 + 铁砧 + 工具架。
+func _workbench() -> void:
+	var img := _img(52, 40)
+	var r := _rng("workbench")
+	_grain(img, r, WOOD_DD, 14, 2, 24, 14, 0.03)
+	_grain(img, r, WOOD_LL, 2, 16, 48, 5, 0.02)
+	_grain(img, r, WOOD, 2, 21, 48, 5, 0.03)
+	_rect(img, 4, 26, 5, 12, WOOD_D)
+	_rect(img, 43, 26, 5, 12, WOOD_D)
+	_rect(img, 26, 10, 14, 5, METAL)
+	_rect(img, 30, 15, 5, 3, METAL.darkened(0.2))
+	_px(img, 26, 10, METAL_L)
+	_rect(img, 18, 5, 2, 7, WOOD_DD)
+	_rect(img, 16, 4, 5, 2, METAL_L)
+	_rect(img, 22, 5, 1, 6, METAL)
+	_outline(img)
+	_save(img, "workbench")
+
+
+## 木牌路标（箭头板 + 钉）。
+func _signpost() -> void:
+	var img := _img(22, 38)
+	var r := _rng("signpost")
+	_grain(img, r, WOOD_D, 9, 8, 4, 28, 0.03)
+	_grain(img, r, WOOD, 2, 4, 17, 9, 0.03)
+	_px(img, 2, 4, WOOD_L)
+	_px(img, 19, 8, WOOD_DD)
+	_px(img, 2, 12, WOOD_DD)
+	_rect(img, 5, 7, 8, 1, WOOD_DD)
+	_px(img, 13, 6, WOOD_DD)
+	_px(img, 13, 8, WOOD_DD)
+	_px(img, 4, 5, METAL_L)
+	_rect(img, 7, 34, 8, 3, SILT)
+	_outline(img)
+	_save(img, "signpost")
+
+
+## 营火（石圈 + 木柴 + 余烬；火苗由场景动画叠加）。
+func _campfire() -> void:
+	var img := _img(24, 20)
+	var r := _rng("campfire")
+	for i in 7:
+		var a := TAU * i / 7.0
+		_px(img, 12 + int(cos(a) * 9), 15 + int(sin(a) * 3.5), SILT)
+		_px(img, 12 + int(cos(a) * 9) + 1, 15 + int(sin(a) * 3.5), SILT_D)
+	for t in 9:
+		_px(img, 5 + t, 14 - t / 3, WOOD_D if t % 3 else WOOD)
+		_px(img, 18 - t, 14 - t / 3, WOOD if t % 3 else WOOD_D)
+	_rect(img, 10, 12, 4, 2, Color("B3541E"))
+	_px(img, 11, 11, Color("F2A24D"))
+	_px(img, 13, 11, Color("F2A24D"))
+	_outline(img)
+	_save(img, "campfire")
+
+
+## 洞穴岩壁（平铺件：湿暗岩层）。
+func _cave_wall() -> void:
+	var img := _img(96, 48)
+	var r := _rng("cave_wall")
+	var base := Color("2A3340")
+	for y in 48:
+		for x in 96:
+			var strata := 0.9 + 0.1 * sin(y * 0.4 + sin(x * 0.05) * 2.0)
+			var col: Color = base.lerp(Color("1C242E"), float(y) / 48.0) * strata
+			_px(img, x, y, _jit(col, r, 0.05))
+	for i in 5:
+		var sx := 8 + r.randi_range(0, 80)
+		for y in r.randi_range(14, 40):
+			_px(img, sx + r.randi_range(-1, 1), y, Color("3A4E60"))
+	for i in 3:
+		var cx := 10 + r.randi_range(0, 76)
+		for y in r.randi_range(16, 44):
+			_px(img, cx + r.randi_range(-1, 2), y, Color("12181F"))
+	_save(img, "cave_wall")
+
+
+## 发光藻丛。
+func _glow_algae() -> void:
+	var img := _img(16, 22)
+	var r := _rng("glow_algae")
+	for i in 5:
+		var bx := 3 + r.randi_range(0, 9)
+		var by := 20 - r.randi_range(0, 6)
+		var h := 6 + r.randi_range(0, 8)
+		for t in h:
+			var col := TEAL_D.lerp(TEAL, float(t) / h)
+			_px(img, bx + int(round(sin(t * 0.6 + i * 2.0) * 1.5)), by - t, col)
+			if t == h - 1:
+				_px(img, bx + int(round(sin(t * 0.6 + i * 2.0) * 1.5)), by - t - 1, Color("9FF7EA"))
+	_outline(img, Color("1A3A34"))
+	_save(img, "glow_algae")
+
+
+func _fill_ellipse(img: Image, cx: int, cy: int, rx: int, ry: int, col: Color) -> void:
+	for y in ry * 2 + 1:
+		for x in rx * 2 + 1:
+			var d := Vector2(float(x - rx), float(y - ry) * (float(rx) / float(ry)))
+			if d.length() <= float(rx):
+				_px(img, cx - rx + x, cy - ry + y, col)
+
+
+## 珊瑚（0=枝状粉 / 1=脑纹橙）。
+func _coral(variant: int) -> void:
+	var img := _img(26, 26 if variant == 0 else 30)
+	var r := _rng("coral_%d" % variant)
+	if variant == 0:
+		var pink := Color("D86A8A")
+		var pink_d := Color("A84E6A")
+		for branch in [[13, 24, -1.9], [11, 24, -1.4], [15, 24, -0.8], [13, 20, -1.6]]:
+			var bx: int = branch[0]
+			var by: int = branch[1]
+			var ang: float = branch[2]
+			for t in 12:
+				var p := Vector2(bx, by) + Vector2(cos(ang), sin(ang)) * t * 0.9
+				_px(img, int(p.x), int(p.y), pink if t % 3 else pink_d)
+				if t > 6:
+					_px(img, int(p.x) + 1, int(p.y), pink_d)
+		_rect(img, 9, 22, 9, 3, pink_d)
+	else:
+		var org := Color("D8924E")
+		var org_d := Color("A86A32")
+		_fill_ellipse(img, 13, 18, 9, 8, org_d)
+		_fill_ellipse(img, 13, 17, 8, 7, org)
+		for i in 4:
+			var yy := 12 + i * 3
+			for x in range(7, 20):
+				if (x + i) % 3 == 0:
+					_px(img, x, yy, org_d)
+	_outline(img)
+	_save(img, "coral_b" if variant else "coral_a")
+
+
+## 异化岩石（紫脉晶石）。
+func _corrupt_rock() -> void:
+	var img := _img(54, 46)
+	var r := _rng("corrupt_rock")
+	var base := Color("3A2E44")
+	for y in 44:
+		var t := float(y) / 44.0
+		var half := int(24 * pow(0.2 + 0.8 * t, 0.7))
+		for x in range(27 - half, 27 + half):
+			var shade := base.lerp(Color("241A2E"), t * 0.7)
+			shade = shade.lerp(Color("524063"), maxf(0.0, 0.3 - absf(float(x) / 54.0 - 0.32) - t * 0.25))
+			_px(img, x + 1, y + 1, _jit(shade, r, 0.05))
+	for i in 4:
+		var cx := 10 + r.randi_range(0, 32)
+		var cy := 8 + r.randi_range(0, 10)
+		for t in r.randi_range(12, 28):
+			_px(img, cx + r.randi_range(-1, 2), cy + t,
+				Color("B45AD6") if t % 3 else Color("8A3AA8"))
+	_barnacles(img, r, 20, 36, 3)
+	_outline(img, Color("1E1428"))
+	_save(img, "corrupt_rock")
+
+
+## 诅咒祭坛（石板 + 符文 + 烛座）。
+func _altar() -> void:
+	var img := _img(40, 34)
+	var r := _rng("altar")
+	_grain(img, r, Color("3A3344"), 6, 14, 28, 16, 0.04)
+	_grain(img, r, Color("4A4156"), 2, 28, 36, 5, 0.04)
+	for x in 36:
+		_px(img, x + 2, 28, Color("5C5268"))
+	_grain(img, r, Color("554A64"), 4, 10, 32, 4, 0.03)
+	for i in 5:
+		_px(img, 13 + i * 3, 16 + (i % 2) * 4, Color("8A2430"))
+		_px(img, 14 + i * 3, 17 + (i % 2) * 4, Color("C43B4A"))
+	_rect(img, 8, 7, 2, 3, Color("E8E4D0"))
+	_rect(img, 30, 7, 2, 3, Color("E8E4D0"))
+	_px(img, 19, 9, GOLD_D)
+	_px(img, 20, 9, GOLD)
+	_outline(img, Color("241E2C"))
+	_save(img, "altar")
+
+
+## 黑色海草（深层）。
+func _seaweed_black() -> void:
+	var img := _img(16, 28)
+	var r := _rng("seaweed_black")
+	for i in 3:
+		var bx := 4 + i * 4
+		var h := 16 + r.randi_range(0, 8)
+		for t in h:
+			var sway := int(round(sin(t * 0.5 + i * 2.0) * 1.6))
+			var col := Color("3A2A4A").lerp(Color("241A30"), float(t) / h)
+			_px(img, bx + sway, 27 - t, col)
+			if t > h - 4:
+				_px(img, bx + sway, 27 - t, Color("5A3A6A"))
+	_outline(img, Color("180F22"))
+	_save(img, "seaweed_black")
+
+
+## 浅海小残骸（船肋残段半埋）。
+func _wreck_debris() -> void:
+	var img := _img(44, 30)
+	var r := _rng("wreck_debris")
+	for y in range(18, 28):
+		var half := int(20 * (float(y - 16) / 12.0))
+		for x in range(22 - half, 22 + half):
+			_px(img, x, y, _jit(SILT.lerp(SILT_D, float(y) / 30.0), r, 0.05))
+	for i in 3:
+		var bx := 10 + i * 11
+		for t in 14:
+			_px(img, bx + int(t * 0.2), 24 - t, WOOD_D if t % 4 else WOOD)
+			_px(img, bx + int(t * 0.2) + 1, 24 - t, WOOD_DD)
+	for t in 12:
+		_px(img, 4 + t, 20 - int(t * 0.4), WOOD)
+	_barnacles(img, r, 14, 24, 4)
+	_outline(img)
+	_save(img, "wreck_debris")
+
+
+## 栈桥桩柱。
+func _pier_post() -> void:
+	var img := _img(12, 44)
+	var r := _rng("pier_post")
+	_grain(img, r, WOOD_D, 4, 2, 4, 40, 0.04)
+	for y in 40:
+		_px(img, 4, y + 2, WOOD_L)
+	for t in 8:
+		_px(img, 4 + t, 10, Color("8A6B45") if t % 2 else Color("5C4428"))
+	_barnacles(img, r, 4, 38, 3)
+	_outline(img)
+	_save(img, "pier_post")
+
+
+## 柴堆。
+func _wood_pile() -> void:
+	var img := _img(32, 22)
+	var r := _rng("wood_pile")
+	for row in 2:
+		var n := 4 - row
+		for i in n:
+			var cx := 4 + i * 7 + row * 3
+			var cy := 15 - row * 7
+			for x in 6:
+				_px(img, cx + x, cy, WOOD_D if x % 2 else WOOD)
+			_px(img, cx, cy - 1, WOOD_L)
+			_px(img, cx + 5, cy, WOOD_DD)
+			_px(img, cx, cy, WOOD_DD)
+	_outline(img)
+	_save(img, "wood_pile")

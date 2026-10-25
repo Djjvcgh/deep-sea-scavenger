@@ -30,9 +30,6 @@ const ZONE_GLOWS := {
 }
 const FISH_COLORS := ["fish_blue", "fish_brown", "fish_green", "fish_grey",
 	"fish_orange", "fish_pink", "fish_red"]
-const SAND_TOPS := ["a", "b", "c", "d", "e", "f", "g", "h"]
-const DIRT_TOPS := ["a", "b", "c", "d", "e", "f", "g", "h"]
-const SAND_FILL := ["a", "b", "c", "d"]
 const FLORA := ["seaweed_green_a", "seaweed_green_b", "seaweed_green_c",
 	"seaweed_green_d", "seaweed_pink_a", "seaweed_pink_b", "seaweed_pink_c",
 	"seaweed_pink_d", "seaweed_orange_a", "seaweed_orange_b",
@@ -456,18 +453,10 @@ func _spawn_chests() -> void:
 			})
 
 
-## 沉船遗址：舱体阴影 + 舱内可搜索容器（掉落来自 WRECK_LOOT 房间池）。
+## 沉船遗址：按类型映射美术主题（货舱/船长室/祭祀舱），舱内可搜索容器不变。
 func _spawn_wreck_containers() -> void:
 	for wi in _wrecks.size():
 		var wreck: Dictionary = _wrecks[wi]
-		var interior: Rect2 = wreck["interior"]
-		var shadow := Polygon2D.new()
-		shadow.polygon = PackedVector2Array([
-			interior.position, interior.position + Vector2(interior.size.x, 0),
-			interior.end, interior.position + Vector2(0, interior.size.y)])
-		shadow.color = Color(0.01, 0.03, 0.06, 0.4)
-		shadow.z_index = 1
-		add_child(shadow)
 		for si in wreck["spots"].size():
 			var pool_key := _wreck_pool_key(wreck["kind"], si)
 			var style: Dictionary = WRECK_CHEST_STYLE[pool_key]
@@ -481,6 +470,24 @@ func _spawn_wreck_containers() -> void:
 				"loot": _make_wreck_provider(pool_key, wreck["anchor"]),
 				"glow": style["glow"],
 			})
+
+
+## 沉船房间的美术装饰（类型 → 主题，见 LevelTheme.room_theme）。
+func _decorate_wrecks() -> void:
+	for wreck in _wrecks:
+		LevelTheme.decorate_room(self,
+			LevelTheme.room_theme(String(wreck["kind"]), String(wreck["zone"]),
+				wreck["interior"]), wreck["interior"], _rng)
+		if wreck.has("captain_room"):
+			LevelTheme.decorate_room(self, "captain_room", wreck["captain_room"], _rng)
+
+
+## 洞穴房间的美术装饰（藏身/隐藏/危险 → 主题）。
+func _decorate_caves() -> void:
+	for cave in _caves:
+		LevelTheme.decorate_room(self,
+			LevelTheme.room_theme(String(cave["kind"]), String(cave["zone"]),
+				cave["interior"]), cave["interior"], _rng)
 
 
 ## 房间池 key：海盗船 0 号点=货舱、1 号点=船长室；其余类型单池。
@@ -751,6 +758,31 @@ func _build_environment() -> void:
 		poly.z_index = -15
 		add_child(poly)
 
+	# 视差远景：远礁影 + Kenney 中景岩与海草（打破大面积空白水域）
+	var pb := ParallaxBackground.new()
+	pb.layer = -18
+	add_child(pb)
+	var far := ParallaxLayer.new()
+	far.motion_scale = Vector2(0.15, 0.1)
+	far.motion_mirroring = Vector2(1320, 0)
+	pb.add_child(far)
+	for i in 3:
+		LevelTheme.sprite(far, "far_rock", Vector2(i * 440 + 220, 1010), 0, 2.0)
+	var mid := ParallaxLayer.new()
+	mid.motion_scale = Vector2(0.45, 0.3)
+	mid.motion_mirroring = Vector2(1500, 0)
+	pb.add_child(mid)
+	for cfg in [["background_rock_a", 140], ["background_seaweed_c", 460],
+			["background_rock_b", 760], ["background_seaweed_g", 1080],
+			["background_rock_a", 1340]]:
+		var ms := Sprite2D.new()
+		ms.texture = _tex(String(cfg[0]))
+		ms.position = Vector2(cfg[1], 1030)
+		ms.scale = Vector2.ONE * 1.5
+		ms.modulate = Color(0.5, 0.58, 0.66)
+		ms.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		mid.add_child(ms)
+
 	_build_decor()
 	_build_fish_schools()
 
@@ -843,6 +875,12 @@ func _build_decor() -> void:
 			spr.z_index = -12
 			add_child(spr)
 
+		# 区域主题开阔区装饰：A=浅海珊瑚残骸 / B=沉船散件 / C=异化岩与祭坛
+		var band := Rect2(float(cfg["x_range"][0]), float(cfg["floor_y"]) - 150.0,
+			float(cfg["x_range"][1]) - float(cfg["x_range"][0]), 150.0)
+		if band.size.x > 200.0:
+			LevelTheme.decorate_room(self, LevelTheme.room_theme("", zone), band, _rng)
+
 
 ## 环境鱼群：纯氛围，无碰撞，按种子生成。
 func _build_fish_schools() -> void:
@@ -877,28 +915,6 @@ func _build_fish_schools() -> void:
 			"phase": _rng.randf() * TAU})
 
 
-func _terrain_tiles(rect: Rect2, fill_name: String, top_name: String, mod: Color) -> void:
-	var body := Node2D.new()
-	body.z_index = 0
-	if rect.size.y <= 64.0:
-		body.add_child(_tiled(top_name, Rect2(rect.position, rect.size), mod))
-	else:
-		body.add_child(_tiled(top_name, Rect2(rect.position, Vector2(rect.size.x, 64.0)), mod))
-		body.add_child(_tiled(fill_name,
-			Rect2(rect.position + Vector2(0, 64.0), rect.size - Vector2(0, 64.0)), mod))
-	add_child(body)
-
-
-func _tiled(tex_name: String, rect: Rect2, mod: Color) -> Sprite2D:
-	var s := Sprite2D.new()
-	s.texture = _tex(tex_name)
-	s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	s.region_enabled = true
-	s.region_rect = Rect2(Vector2.ZERO, rect.size)
-	s.centered = false
-	s.position = rect.position
-	s.modulate = mod
-	return s
 
 
 func _used_rect(tex: Texture2D) -> Rect2:
@@ -943,37 +959,15 @@ func _add_rock_blob(body: StaticBody2D, rect: Rect2) -> void:
 
 
 ## 沙地逐格铺装：随机顶盖与填充变体 + 明度抖动，打破平铺图案感。
-func _sand_grid(body: StaticBody2D, rect: Rect2, mod: Color) -> void:
-	var cols := int(ceil(rect.size.x / 64.0))
-	var rows := int(ceil(rect.size.y / 64.0))
-	for cy in rows:
-		for cx in cols:
-			var pos := rect.position + Vector2(cx * 64.0, cy * 64.0)
-			var size := Vector2(
-				minf(64.0, rect.end.x - pos.x),
-				minf(64.0, rect.end.y - pos.y))
-			var tex_name: String
-			if cy == 0:
-				tex_name = "terrain_sand_top_%s" % SAND_TOPS[_rng.randi_range(0, 7)]
-			else:
-				tex_name = "terrain_sand_%s" % SAND_FILL[_rng.randi_range(0, 3)]
-			var spr := Sprite2D.new()
-			spr.texture = _tex(tex_name)
-			spr.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-			spr.region_enabled = true
-			spr.region_rect = Rect2(Vector2.ZERO, size)
-			spr.centered = false
-			spr.position = pos
-			var b := _rng.randf_range(0.92, 1.0)
-			spr.modulate = Color(mod.r * b, mod.g * b, mod.b * b)
-			body.add_child(spr)
-
 
 func _build_terrain() -> void:
+	# 碰撞体（逻辑层）：岩块保持贴图+贴合碰撞；其余矩形不再挂任何可见形状
 	var body := StaticBody2D.new()
 	body.name = "Terrain"
 	body.collision_layer = 1
 	body.collision_mask = 0
+	var art := Node2D.new()
+	art.name = "Art"
 	for zone in ["A", "B", "C"]:
 		for r in _solids_for(zone):
 			var rect := Rect2(r[0], r[1], r[2], r[3])
@@ -981,35 +975,23 @@ func _build_terrain() -> void:
 			if kind == "rock" and rect.size.x <= 150.0 and rect.size.y <= 150.0:
 				_add_rock_blob(body, rect)
 				continue
-
 			var cs := CollisionShape2D.new()
 			var shape := RectangleShape2D.new()
 			shape.size = rect.size
 			cs.shape = shape
 			cs.position = rect.get_center()
 			body.add_child(cs)
-
-			var edge := Color(0.2, 0.28, 0.33)
-			if kind == "sand":
-				edge = Color(0.5, 0.45, 0.3) * _sand_tint
-				_sand_grid(body, rect, _sand_tint)
-			elif kind == "wreck":
-				edge = Color(0.38, 0.27, 0.15)
-				_terrain_tiles(rect, "terrain_dirt_%s" % SAND_FILL[_rng.randi_range(0, 3)],
-					"terrain_dirt_top_%s" % DIRT_TOPS[_rng.randi_range(0, 7)],
-					Color(0.78, 0.6, 0.45) * _rock_tint)
-			else:
-				edge = Color(0.24, 0.3, 0.38)
-				_terrain_tiles(rect, "terrain_dirt_%s" % SAND_FILL[_rng.randi_range(0, 3)],
-					"terrain_dirt_top_%s" % DIRT_TOPS[_rng.randi_range(0, 7)],
-					Color(0.52, 0.58, 0.68) * _rock_tint)
-
-			var top_line := Line2D.new()
-			top_line.points = PackedVector2Array([rect.position, rect.position + Vector2(rect.size.x, 0)])
-			top_line.width = 3.0
-			top_line.default_color = edge
-			body.add_child(top_line)
+			# 美术层：按材质铺装（区域C岩体带异化变体），海况色调渗入
+			LevelTheme.paint_solid(art, rect, kind, {
+				"sand": _sand_tint,
+				"rock": _rock_tint * (Color(0.9, 0.92, 1.0) if zone == "C" else Color.WHITE),
+				"corrupt": zone == "C",
+			}, int(rect.position.x))
 	add_child(body)
+	add_child(art)
+	# 房间级装饰：沉船 / 洞穴（按类型映射美术主题）
+	_decorate_wrecks()
+	_decorate_caves()
 
 
 func _build_extraction() -> void:
@@ -1036,10 +1018,10 @@ func _build_extraction() -> void:
 	beam.z_index = -5
 	add_child(beam)
 
-	var label := UICommon.label("撤离点", 22, UICommon.GOLD)
-	label.position = rect.get_center() + Vector2(-30, -60)
-	label.z_index = -4
-	add_child(label)
+	# 撤离浮标灯标（代替文字标签）
+	LevelTheme.sprite(self, "buoy", rect.position + Vector2(50, -20), 2)
+	LevelTheme.glow(self, rect.position + Vector2(50, -36), 22.0, 14.0,
+		Color(0.98, 0.85, 0.4, 0.28), 2)
 
 
 func _on_extract_entered(body: Node2D) -> void:
