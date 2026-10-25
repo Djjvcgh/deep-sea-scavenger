@@ -221,6 +221,15 @@ func _build_ground() -> void:
 	grass.width = 6.0
 	grass.default_color = Color(0.4, 0.6, 0.3)
 	body.add_child(grass)
+
+	# 屏幕两侧隐形边界墙：防止走出世界坠落消失
+	for wx in [-20.0, 1300.0]:
+		var wcs := CollisionShape2D.new()
+		var wshape := RectangleShape2D.new()
+		wshape.size = Vector2(40, 1600)
+		wcs.shape = wshape
+		wcs.position = Vector2(wx, 80)
+		body.add_child(wcs)
 	add_child(body)
 
 

@@ -70,6 +70,24 @@ func _run() -> void:
 	Input.action_release("move_right")
 	_check(player.global_position.x > x_before + 10.0, "关闭面板后玩家可以移动")
 
+	# 世界边界：贴着左右边缘走不会坠出屏幕
+	player.global_position = Vector2(60, 500)
+	await create_timer(0.3).timeout
+	Input.action_press("move_left")
+	await create_timer(2.0).timeout
+	Input.action_release("move_left")
+	_check(player.global_position.x >= 0.0 and player.global_position.y < 560.0,
+		"左边界：玩家留在画面内不坠落（x=%.0f, y=%.0f）"
+			% [player.global_position.x, player.global_position.y])
+	player.global_position = Vector2(1220, 500)
+	await create_timer(0.3).timeout
+	Input.action_press("move_right")
+	await create_timer(2.0).timeout
+	Input.action_release("move_right")
+	_check(player.global_position.x <= 1280.0 and player.global_position.y < 560.0,
+		"右边界：玩家留在画面内不坠落（x=%.0f, y=%.0f）"
+			% [player.global_position.x, player.global_position.y])
+
 	# 出售与存档
 	var credits_before: int = gs.credits
 	gs.sell_one("bronze_coins")

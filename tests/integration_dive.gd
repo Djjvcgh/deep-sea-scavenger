@@ -35,6 +35,21 @@ func _run() -> void:
 	var player = uw.get_node("Player")
 	_check(player.stamina > 99.5, "下潜开始体力满 100")
 
+	# 世界边界：贴左右墙游不会游出世界
+	player.global_position = Vector2(40, 500)
+	await create_timer(0.3).timeout
+	Input.action_press("move_left")
+	await create_timer(1.5).timeout
+	Input.action_release("move_left")
+	_check(player.global_position.x >= 0.0, "左墙：无法游出世界（x=%.0f）" % player.global_position.x)
+	player.global_position = Vector2(5080, 800)
+	await create_timer(0.3).timeout
+	Input.action_press("move_right")
+	await create_timer(1.5).timeout
+	Input.action_release("move_right")
+	_check(player.global_position.x <= 5120.0, "右墙：无法游出世界（x=%.0f）" % player.global_position.x)
+	await create_timer(Balance.INVINCIBLE_TIME).timeout
+
 	# 选 A 区宝箱（远离鲨鱼巡逻区，避免搜索被反复打断——打断机制本身由鲨鱼测试覆盖）
 	var chest = null
 	for n in get_nodes_in_group("interactables"):
