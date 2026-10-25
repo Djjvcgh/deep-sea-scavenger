@@ -73,3 +73,25 @@ const BOSS_TELEGRAPH := 1.1       # 预警圈持续时间（秒）
 const BOSS_SLAM_RADIUS := 110.0   # 触拍伤害半径
 const BOSS_DAMAGE := 1
 const BOSS_DRIFT_SPEED := 26.0    # 巨影逼近速度
+
+# ---- 幽灵船长（沉船主题 Boss） ----
+const CAPTAIN_HP := 10
+const CAPTAIN_DRIFT_SPEED := 42.0     # 缓慢逼近
+const CAPTAIN_KEEP_DIST := 240.0      # 逼近到此距离内则停住蓄力
+const CAPTAIN_DASH_INTERVAL := 4.0    # 冲刺循环间隔
+const CAPTAIN_DASH_TELEGRAPH := 0.9   # 冲刺预警时间
+const CAPTAIN_DASH_SPEED := 520.0
+const CAPTAIN_DASH_TIME := 0.5
+const CAPTAIN_DASH_RANGE := 340.0     # 预警线长度（也是冲刺距离参考）
+const CAPTAIN_DAMAGE := 1
+const CAPTAIN_LEASH := 850.0          # 玩家离开出生点该距离即遁回
+
+# ---- 洞穴海蛇（洞穴主题 Boss） ----
+const SERPENT_HP := 12
+const SERPENT_AWAKE_DIST := 430.0     # 玩家靠近洞穴深处即触发突袭
+const SERPENT_LUNGE_TELEGRAPH := 1.0  # 突袭预警时间
+const SERPENT_LUNGE_SPEED := 460.0
+const SERPENT_LUNGE_TIME := 0.45
+const SERPENT_COOLDOWN := 2.2         # 突袭后回洞喘息时间
+const SERPENT_DAMAGE := 1
+const SERPENT_LEASH := 900.0          # 玩家离开巢穴该距离即潜回

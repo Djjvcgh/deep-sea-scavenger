@@ -74,9 +74,12 @@ func _run() -> void:
 	await create_timer(0.5).timeout
 	_check(uw._cave_seen.size() >= 1, "进入洞穴触发发现提示")
 	var shark = get_nodes_in_group("sharks")[0]
+	for i in range(1, get_nodes_in_group("sharks").size()):
+		var other = get_nodes_in_group("sharks")[i]
+		other.take_damage(99, other.global_position + Vector2(0, 60))
 	# 鲨鱼贴在洞壁外侧：海床洞穴（洞口朝左）放左侧，悬洞（背壁在右）放右侧
-	var shark_pos: Vector2 = Vector2(interior.position.x - 60.0, center.y) \
-		if cave["mode"] == "floor" else Vector2(interior.end.x + 60.0, center.y)
+	var shark_pos: Vector2 = Vector2(interior.position.x - 95.0, center.y) \
+		if cave["mode"] == "floor" else Vector2(interior.end.x + 95.0, center.y)
 	shark.setup(shark_pos.x - 30.0, shark_pos.x + 30.0, shark_pos.y, player)
 	shark.global_position = shark_pos
 	shark.velocity = Vector2.ZERO
@@ -140,6 +143,12 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	_check(not player.breathing and player.stamina < st0, "深水退出换气并继续消耗体力")
 
+	# ---------- 海域主题与 Boss ----------
+	print("[海域主题 Boss]")
+	_check(MapData.DIVE_THEME_WEIGHTS.has(uw.dive_theme), "本局主题合法（%s）" % uw.dive_theme)
+	await _test_ghost_captain(uw, player)
+	await _test_sea_serpent(uw, player)
+
 	gs.reset_defaults()
 	OS.set_environment("DEEPSEA_SEED", "")
 	if failures == 0:
@@ -147,3 +156,122 @@ func _run() -> void:
 	else:
 		print("=== V0.4 场景集成测试共 %d 项失败 ===" % failures)
 	quit(1 if failures > 0 else 0)
+
+
+## 沉船主题种子：进入船长室触发幽灵船长 → 击杀 → 战利品袋。
+func _test_ghost_captain(uw, player) -> void:
+	var gs = root.get_node("GameState")
+	OS.set_environment("DEEPSEA_SEED", "27")
+	change_scene_to_file("res://scenes/underwater.tscn")
+	await process_frame
+	await process_frame
+	var uw2 = current_scene
+	if uw2.dive_theme != "wreck" or uw2._wrecks.is_empty():
+		print("  [跳过] 种子0 未满足沉船主题+沉船（theme=%s wrecks=%d）" % [uw2.dive_theme, uw2._wrecks.size()])
+		return
+	var wreck = null
+	for w in uw2._wrecks:
+		if w.has("captain_room"):
+			wreck = w
+			break
+	if wreck == null:
+		wreck = uw2._wrecks[0]
+	var room: Rect2 = wreck.get("captain_room", wreck["interior"])
+	var p2 = uw2.get_node("Player")
+	p2.global_position = room.get_center()
+	p2.velocity = Vector2.ZERO
+	await create_timer(0.6).timeout
+	if uw2.boss == null:
+		_check(false, "进入船长室触发幽灵船长")
+		return
+	_check(uw2.boss.boss_name == "幽灵船长", "幽灵船长显形")
+	await create_timer(2.0).timeout
+	_check(uw2.any_boss_active(), "HUD 判定船长威胁")
+	await create_timer(Balance.CAPTAIN_DASH_INTERVAL + Balance.CAPTAIN_DASH_TELEGRAPH + 0.6).timeout
+	_check(uw2.boss != null and uw2.boss.state in [uw2.boss.State.TELEGRAPH, uw2.boss.State.DASHING,
+		uw2.boss.State.ACTIVE], "船长进入攻击循环（当前状态 %d）" % uw2.boss.state)
+	uw2.boss.global_position = room.get_center() + Vector2(0, 27)   # 移到舱内空旷处再击杀，战利品袋不落在墙体里
+	uw2.boss.take_damage(99, p2.global_position)
+	_check(uw2.boss.dead, "船长生命耗尽")
+	await create_timer(0.4).timeout
+	var trophy = null
+	for n in get_nodes_in_group("interactables"):
+		if "collect_loot" in n and n.container_kind == "trophy":
+			trophy = n
+			break
+	_check(trophy != null, "沉没处生成船长战利品袋")
+	if trophy != null:
+		gs.dive_bag = []
+		p2.invincible_left = 99999.0   # 防巡逻鲨隔门咬断搜索
+		p2.global_position = trophy.global_position + Vector2(0, -4)
+		await create_timer(0.3).timeout
+		Input.action_press("interact")
+		await create_timer(2.2).timeout
+		Input.action_release("interact")
+		await create_timer(0.3).timeout
+		uw2.loot_panel.take_all_and_close()
+		await process_frame
+		var got_relic := false
+		for e in gs.dive_bag:
+			if e["id"] == "captain_compass" and e["quality"] == "pristine":
+				got_relic = true
+		_check(got_relic, "拾取完好船长罗盘")
+
+
+## 洞穴主题种子：进入危险洞穴触发洞穴海蛇 → 击杀 → 战利品袋。
+func _test_sea_serpent(uw, player) -> void:
+	var gs = root.get_node("GameState")
+	OS.set_environment("DEEPSEA_SEED", "3")
+	change_scene_to_file("res://scenes/underwater.tscn")
+	await process_frame
+	await process_frame
+	var uw3 = current_scene
+	if uw3.dive_theme != "cave":
+		print("  [跳过] 种子3 非洞穴主题（%s）" % uw3.dive_theme)
+		return
+	var danger_cave = null
+	for c in uw3._caves:
+		if c["kind"] in ["danger", "hang_danger"]:
+			danger_cave = c
+			break
+	if danger_cave == null:
+		_check(false, "洞穴主题含危险洞穴")
+		return
+	var p3 = uw3.get_node("Player")
+	p3.global_position = (danger_cave["interior"] as Rect2).get_center()
+	p3.velocity = Vector2.ZERO
+	await create_timer(0.6).timeout
+	if uw3.boss == null:
+		_check(false, "靠近危险洞穴触发洞穴海蛇")
+		return
+	_check(uw3.boss.boss_name == "洞穴海蛇", "洞穴海蛇现形")
+	# 预警后突袭：站定在预警线方向上应受一次伤害
+	p3.invincible_left = 0.0
+	var hp0: int = p3.hp
+	await create_timer(Balance.SERPENT_LUNGE_TELEGRAPH + Balance.SERPENT_LUNGE_TIME + 0.3).timeout
+	_check(p3.hp < hp0 or uw3.boss.state == uw3.boss.State.COOLDOWN, "海蛇预警后突袭")
+	uw3.boss.take_damage(99, p3.global_position)
+	_check(uw3.boss.dead, "海蛇生命耗尽")
+	await create_timer(0.4).timeout
+	var trophy = null
+	for n in get_nodes_in_group("interactables"):
+		if "collect_loot" in n and n.container_kind == "trophy":
+			trophy = n
+			break
+	_check(trophy != null, "沉没处生成海蛇战利品袋")
+	if trophy != null:
+		gs.dive_bag = []
+		p3.invincible_left = 99999.0
+		p3.global_position = trophy.global_position + Vector2(0, -4)
+		await create_timer(0.3).timeout
+		Input.action_press("interact")
+		await create_timer(2.2).timeout
+		Input.action_release("interact")
+		await create_timer(0.3).timeout
+		uw3.loot_panel.take_all_and_close()
+		await process_frame
+		var got_pearl := false
+		for e in gs.dive_bag:
+			if e["id"] == "serpent_pearl" and e["quality"] == "pristine":
+				got_pearl = true
+		_check(got_pearl, "拾取完好深海蛇珠")

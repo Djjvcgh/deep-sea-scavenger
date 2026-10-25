@@ -39,6 +39,8 @@ func _run() -> void:
 	var save_path: String = root.get_node("SaveManager").save_path
 	if FileAccess.file_exists(save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+	# 固定深渊主题种子：神像只在该主题下唤醒巨影
+	OS.set_environment("DEEPSEA_SEED", "2")
 
 	printerr("[鱼叉猎鲨]")
 	await _load_underwater()
@@ -170,6 +172,7 @@ func _run() -> void:
 
 	# 清理
 	paused = false
+	OS.set_environment("DEEPSEA_SEED", "")
 	gs.reset_defaults()
 	if FileAccess.file_exists(save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))

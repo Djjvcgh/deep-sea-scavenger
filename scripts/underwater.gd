@@ -17,6 +17,8 @@ const LootScene := preload("res://scenes/ui/loot_panel.tscn")
 const ResultsScene := preload("res://scenes/ui/results_panel.tscn")
 const PauseScene := preload("res://scenes/ui/pause_menu.tscn")
 const BossScript := preload("res://scripts/boss_leviathan.gd")
+const CaptainBossScript := preload("res://scripts/boss_ghost_captain.gd")
+const SerpentBossScript := preload("res://scripts/boss_sea_serpent.gd")
 
 const SPR := "res://assets/sprites/kenney_fish/"
 const ZONE_GLOWS := {
@@ -66,6 +68,7 @@ var pause_menu: CanvasLayer
 var in_extraction := false
 var ended := false
 var dive_seed := 0
+var dive_theme := "abyss"     # 本次海域主题：wreck / cave / abyss，决定出没的 Boss
 var time_left := 0.0
 var boss: Node2D = null
 
@@ -90,6 +93,7 @@ var _tex_cache := {}
 var _used_rect_cache := {}
 var _boss_awaken_left := -1.0
 var _idol_warned := false
+var _boss_in_trigger := false
 var _water_tint := Color.WHITE
 var _sand_tint := Color.WHITE
 var _rock_tint := Color.WHITE
@@ -139,6 +143,9 @@ func _ready() -> void:
 		var zone := MapDataRes.zone_at(float(GameState.lost_cache["x"]))
 		hud.spawn_notice("声呐检测到上次的遗落物（%s）" % MapDataRes.zone_name(zone), UICommon.CYAN)
 
+	hud.spawn_notice("本次海域主题：%s（%s出没）" \
+		% [MapDataRes.THEME_NAMES[dive_theme], MapDataRes.THEME_BOSS[dive_theme]], UICommon.CYAN)
+
 	Sfx.play_ambient("ambient_underwater")
 
 
@@ -155,6 +162,8 @@ func _roll_layout() -> void:
 	if env_seed != "":
 		dive_seed = int(env_seed)
 	_rng.seed = dive_seed
+	# 海域主题：决定本次出没的 Boss，并对生成做轻微偏置
+	dive_theme = String(_weighted_roll(MapDataRes.DIVE_THEME_WEIGHTS))
 	_chosen = {}
 	# 海况色调：每潜微调水色/沙色/岩色，让不同下潜一眼可辨
 	_water_tint = Color(_rng.randf_range(0.86, 1.0), _rng.randf_range(0.9, 1.0), _rng.randf_range(0.9, 1.02))
@@ -164,18 +173,27 @@ func _roll_layout() -> void:
 		var variants: Array = MapDataRes.ZONE_VARIANTS[zone]
 		var index := _rng.randi_range(0, variants.size() - 1)
 		_chosen[zone] = {"index": index, "variant": variants[index]}
-	# 沉船遗址：按种子激活变体锚点（0~2 艘，合法性由变体数据校验保证）
+	# 沉船遗址：按种子激活变体锚点（0~2 艘，合法性由变体数据校验保证）；
+	# 沉船主题保证至少一艘（幽灵船长需要触发点）
 	_wrecks = WreckGenRes.generate(_rng, _chosen)
+	if dive_theme == "wreck" and _wrecks.is_empty():
+		var forced: Dictionary = WreckGenRes.force_one(_rng, _chosen)
+		if not forced.is_empty():
+			_wrecks.append(forced)
 	_wreck_solids = {"A": [], "B": [], "C": []}
 	for w in _wrecks:
 		for r in w["rects"]:
 			_wreck_solids[w["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, "wreck"])
-	# 洞穴：2~4 处（海床岩洞 / 深渊悬洞），避让沉船与既有地形
-	_caves = CaveGenRes.generate(_rng, _chosen, _all_wreck_rects())
+	# 洞穴：2~4 处（海床岩洞 / 深渊悬洞），避让沉船与既有地形；
+	# 洞穴主题保底 3 处且保证一处危险洞穴（海蛇需要潜伏点）
+	var cave_min := 3 if dive_theme == "cave" else 2
+	var cave_force := "danger" if dive_theme == "cave" else ""
+	_caves = CaveGenRes.generate(_rng, _chosen, _all_wreck_rects(), cave_min, cave_force)
 	_cave_solids = {"A": [], "B": [], "C": []}
 	for c in _caves:
 		for r in c["rects"]:
-			_cave_solids[c["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, "rock"])
+			# kind "cave"：走完整矩形平铺+碰撞路径（避免落入 rock_blob 小圆石分支，墙必须有实体）
+			_cave_solids[c["zone"]].append([r.position.x, r.position.y, r.size.x, r.size.y, "cave"])
 
 
 func _all_wreck_rects() -> Array:
@@ -250,45 +268,81 @@ func _update_wreck_discovery() -> void:
 			Sfx.play("click", -4.0)
 
 
-## 携带诅咒神像时，深渊巨影会在短暂延迟后苏醒。
+## 依据海域主题决定 Boss 出没：
+## 深渊主题 → 携带诅咒神像唤醒巨影；沉船主题 → 进入沉船长室显形幽灵船长；
+## 洞穴主题 → 靠近深海危险洞穴惊出洞穴海蛇。每次下潜只有一个 Boss。
 func _update_boss_trigger(delta: float) -> void:
 	if boss != null:
 		return
-	if GameState.has_curse_idol():
-		if not _idol_warned:
-			_idol_warned = true
-			_boss_awaken_left = BalanceRes.BOSS_AWAKEN_DELAY
-			hud.spawn_notice("神像的诅咒在深海中回荡……", UICommon.ORANGE)
-		else:
-			_boss_awaken_left -= delta
-			if _boss_awaken_left <= 0.0:
-				_spawn_boss()
-	else:
-		_idol_warned = false
-		_boss_awaken_left = -1.0
+	var in_trigger := false
+	match dive_theme:
+		"abyss":
+			if GameState.has_curse_idol():
+				if not _idol_warned:
+					_idol_warned = true
+					_boss_awaken_left = BalanceRes.BOSS_AWAKEN_DELAY
+					hud.spawn_notice("神像的诅咒在深海中回荡……", UICommon.ORANGE)
+				else:
+					_boss_awaken_left -= delta
+					if _boss_awaken_left <= 0.0:
+						_spawn_boss(BossScript, Vector2.INF, "深渊巨影苏醒了！")
+				in_trigger = true
+			else:
+				_idol_warned = false
+				_boss_awaken_left = -1.0
+		"wreck":
+			for w in _wrecks:
+				var room: Rect2 = w.get("captain_room", w["interior"])
+				if room.has_point(player.global_position):
+					in_trigger = true
+					if not _boss_in_trigger:
+						_boss_in_trigger = true
+						_spawn_boss(CaptainBossScript, room.get_center(),
+							"幽灵船长在沉船深处显形了！")
+					break
+		"cave":
+			for c in _caves:
+				if c["kind"] in ["danger", "hang_danger"] \
+						and (c["interior"] as Rect2).grow(12.0).has_point(player.global_position):
+					in_trigger = true
+					if not _boss_in_trigger:
+						_boss_in_trigger = true
+						_spawn_boss(SerpentBossScript, (c["interior"] as Rect2).get_center(),
+							"洞穴海蛇从黑暗中突袭！")
+					break
+	if not in_trigger:
+		_boss_in_trigger = false
 
 
-func _spawn_boss() -> void:
-	boss = BossScript.new()
+func _spawn_boss(script: GDScript, pos: Vector2, notice: String) -> void:
+	boss = script.new()
 	boss.setup(player)          # 先注入玩家引用（_ready 中会用到）
+	if pos != Vector2.INF:
+		boss.position = pos     # 固定出生点（船长室/洞穴巢穴中心，非墙体）
 	add_child(boss)
 	boss.defeated.connect(_on_boss_defeated)
-	boss.submerged.connect(func() -> void:
-		_boss_awaken_left = -1.0
-		_idol_warned = false
-		boss = null)
-	hud.spawn_notice("深渊巨影苏醒了！", UICommon.DANGER)
+	boss.submerged.connect(_on_boss_submerged)
+	hud.spawn_notice(notice, UICommon.DANGER)
+
+
+func _on_boss_submerged() -> void:
+	_boss_awaken_left = -1.0
+	_idol_warned = false
+	_boss_in_trigger = false
+	boss = null
 
 
 func _on_boss_defeated(pos: Vector2) -> void:
-	hud.spawn_notice("巨影沉入了深渊……战利品浮了上来", UICommon.GOLD)
-	# 巨影战利品袋：用开箱拾取界面取回
+	var loot: Array = boss.loot_items
+	var bname := String(boss.boss_name)
+	hud.spawn_notice("%s被击败了……战利品浮了上来" % bname, UICommon.GOLD)
+	# Boss 战利品袋：用开箱拾取界面取回
 	var trophy := ChestScene.instantiate()
 	trophy.position = pos + Vector2(0, -40)
 	add_child(trophy)
 	trophy.setup_container({
-		"kind": "trophy", "name": "巨影战利品", "search_time": 1.5,
-		"loot": func() -> Array: return ItemDBRes.BOSS_LOOT.duplicate(true),
+		"kind": "trophy", "name": "%s战利品" % bname, "search_time": 1.5,
+		"loot": func() -> Array: return loot.duplicate(true),
 		"glow": Color(0.95, 0.78, 0.25, 0.8),
 	})
 

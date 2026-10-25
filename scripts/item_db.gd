@@ -137,6 +137,22 @@ const BOSS_LOOT := [
 	{"mat": "leather"},
 ]
 
+## 幽灵船长击杀掉落（高价值船长遗物）
+const CAPTAIN_LOOT := [
+	{"id": "captain_compass", "quality": "pristine"},
+	{"id": "gold_sextant", "quality": "fine"},
+	{"mat": "leather"},
+	{"mat": "leather"},
+]
+
+## 洞穴海蛇击杀掉落（特殊深海遗物）
+const SERPENT_LOOT := [
+	{"id": "serpent_pearl", "quality": "pristine"},
+	{"id": "gold_cup", "quality": "fine"},
+	{"mat": "leather"},
+	{"mat": "leather"},
+]
+
 # 各区域宝物出现权重（宝箱内物品的类型分布，区域按 x 坐标划分）
 const ZONE_WEIGHTS := {
 	"A": {"old_coin": 0.10, "bronze_coins": 0.55, "silver_platter": 0.35},

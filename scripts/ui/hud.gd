@@ -24,6 +24,7 @@ var _return_label: Label
 var _vignette: ColorRect
 var _boss_box: VBoxContainer
 var _boss_bar: ProgressBar
+var _boss_name_label: Label
 var _heartbeat_cd := 0.0
 var _t := 0.0
 var _hint_base := "WASD 游动 · Shift 冲刺 · 长按 E 搜索 · Tab 背包 · Esc 暂停"
@@ -146,9 +147,9 @@ func _build() -> void:
 	_boss_box.offset_top = 64
 	_boss_box.visible = false
 	add_child(_boss_box)
-	var boss_name := UICommon.label("深渊巨影", 16, Color(0.8, 0.5, 0.85))
-	boss_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_boss_box.add_child(boss_name)
+	_boss_name_label = UICommon.label("深渊巨影", 16, Color(0.8, 0.5, 0.85))
+	_boss_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_boss_box.add_child(_boss_name_label)
 	_boss_bar = ProgressBar.new()
 	_boss_bar.custom_minimum_size = Vector2(0, 12)
 	_boss_bar.show_percentage = false
@@ -234,7 +235,8 @@ func _process(delta: float) -> void:
 	_bag_label.text = "背包 %d/%d" % [GameState.bag_used_slots(), GameState.bag_capacity()]
 	_value_label.text = "本次估值 %d" % GameState.dive_total_value()
 	if dive != null:
-		_seed_label.text = "海况 #%d" % dive.dive_seed
+		_seed_label.text = "海况 #%d · %s" % [dive.dive_seed,
+			MapDataRes.THEME_NAMES.get(dive.dive_theme, "")]
 
 	# 区域（含变体名，体现本次"海况"）
 	if dive != null and is_instance_valid(player):
@@ -301,10 +303,11 @@ func _process(delta: float) -> void:
 	else:
 		_return_label.visible = false
 
-	# 巨影血条
+	# Boss 血条（活跃时显示，名字随 Boss 而定）
 	var boss_active: bool = dive != null and dive.any_boss_active()
 	_boss_box.visible = boss_active
 	if boss_active:
+		_boss_name_label.text = String(dive.boss.boss_name)
 		_boss_bar.value = float(dive.boss.hp) / float(dive.boss.hp_max)
 
 	# 操作提示（拥有鱼叉后追加）
@@ -323,9 +326,9 @@ func _process(delta: float) -> void:
 		_vignette.color.a = 0.0
 		_heartbeat_cd = 0.0
 
-	# 危险警告（优先级：巨影 > 鲨鱼 > 重度低体力 > 低体力；换气中不提示体力警告）
+	# 危险警告（优先级：Boss > 鲨鱼 > 重度低体力 > 低体力；换气中不提示体力警告）
 	if dive != null and dive.any_boss_active():
-		_show_warning("深渊巨影盯上了你！", Color(0.8, 0.5, 0.85))
+		_show_warning("%s盯上了你！" % dive.boss.boss_name, Color(0.8, 0.5, 0.85))
 	elif dive != null and dive.any_shark_alerting():
 		_show_warning("危险！鲨鱼发现了你！", UICommon.DANGER)
 	elif player.breathing:

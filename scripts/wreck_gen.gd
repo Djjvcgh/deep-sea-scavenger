@@ -39,6 +39,15 @@ static func _pick_kind(rng: RandomNumberGenerator, kinds: Array) -> String:
 	return String(kinds.back())
 
 
+## 沉船主题强制激活一个锚点（保证幽灵船长有触发点）；无可用锚点时返回空。
+static func force_one(rng: RandomNumberGenerator, chosen: Dictionary) -> Dictionary:
+	for zone in ["B", "C"]:
+		for anchor_cfg in chosen[zone]["variant"].get("wreck_anchors", []):
+			var kind := _pick_kind(rng, anchor_cfg["kinds"])
+			return _build(kind, zone, Vector2(anchor_cfg["x"], MapDataRes.WRECK_FLOOR_Y))
+	return {}
+
+
 static func _build(kind: String, zone: String, anchor: Vector2) -> Dictionary:
 	var tpl: Dictionary = MapDataRes.WRECK_TEMPLATES[kind]
 	var wreck := {

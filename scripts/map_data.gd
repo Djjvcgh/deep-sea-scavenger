@@ -300,6 +300,12 @@ const FLOOR_CAVE_ZONES := {
 }
 
 
+## ---- V0.4 海域主题：每次下潜抽取，决定出没的 Boss ----
+const DIVE_THEME_WEIGHTS := {"wreck": 0.35, "cave": 0.35, "abyss": 0.30}
+const THEME_NAMES := {"wreck": "沉船海域", "cave": "洞穴海域", "abyss": "深渊海域"}
+const THEME_BOSS := {"wreck": "幽灵船长", "cave": "洞穴海蛇", "abyss": "深渊巨影"}
+
+
 ## 共享骨架 + 指定变体的完整实体地形
 static func variant_solids(zone: String, index: int) -> Array:
 	var v: Dictionary = ZONE_VARIANTS[zone][index]

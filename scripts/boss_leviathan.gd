@@ -9,15 +9,18 @@ signal submerged
 
 const BalanceRes := preload("res://scripts/balance.gd")
 const MapDataRes := preload("res://scripts/map_data.gd")
+const ItemDBRes := preload("res://scripts/item_db.gd")
 
 enum State { EMERGING, ACTIVE, SINKING }
 
+var boss_name := "深渊巨影"
 var state: int = State.EMERGING
 var hp: int = BalanceRes.BOSS_HP
 var hp_max: int = BalanceRes.BOSS_HP
 var player: CharacterBody2D = null
 var dead := false
 var hit_radius := 160.0
+var loot_items: Array = ItemDBRes.BOSS_LOOT.duplicate(true)
 
 var _emerge_left := 2.5
 var _slam_timer := 2.2

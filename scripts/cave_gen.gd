@@ -13,12 +13,19 @@ const COUNT_RANGE := [2, 4]
 const MODE_WEIGHTS := {"floor": 0.35, "hang": 0.65}
 
 
-static func generate(rng: RandomNumberGenerator, chosen: Dictionary, wreck_rects: Array) -> Array:
+## 生成洞穴。min_count 用于洞穴主题保底；force_kind 用于保证危险洞穴存在。
+static func generate(rng: RandomNumberGenerator, chosen: Dictionary, wreck_rects: Array,
+		min_count := 2, force_kind := "") -> Array:
 	var out: Array = []
-	var target := rng.randi_range(COUNT_RANGE[0], COUNT_RANGE[1])
 	var placed_rects: Array = []
 	for w in wreck_rects:
 		placed_rects.append(w)
+	if force_kind != "":
+		var forced := _place_kind(rng, chosen, force_kind, placed_rects)
+		if not forced.is_empty():
+			out.append(forced)
+			placed_rects.append_array(forced["rects"])
+	var target := maxi(rng.randi_range(COUNT_RANGE[0], COUNT_RANGE[1]), min_count)
 	for attempt in 80:
 		if out.size() >= target:
 			break
@@ -34,6 +41,12 @@ static func _place_one(rng: RandomNumberGenerator, chosen: Dictionary,
 		placed_rects: Array) -> Dictionary:
 	var mode := _weighted_mode(rng)
 	var kind := String(_weighted(rng, MapDataRes.CAVE_KIND_WEIGHTS[mode]))
+	return _place_kind(rng, chosen, kind, placed_rects)
+
+
+static func _place_kind(rng: RandomNumberGenerator, chosen: Dictionary, kind: String,
+		placed_rects: Array) -> Dictionary:
+	var mode: String = MapDataRes.CAVE_TEMPLATES[kind]["mode"]
 	var tpl: Dictionary = MapDataRes.CAVE_TEMPLATES[kind]
 	for attempt in 14:
 		var anchor: Vector2
