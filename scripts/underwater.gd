@@ -63,6 +63,9 @@ var _tex_cache := {}
 var _used_rect_cache := {}
 var _boss_awaken_left := -1.0
 var _idol_warned := false
+var _water_tint := Color.WHITE
+var _sand_tint := Color.WHITE
+var _rock_tint := Color.WHITE
 
 
 func _ready() -> void:
@@ -120,6 +123,10 @@ func _roll_layout() -> void:
 	dive_seed = _rng.randi()
 	_rng.seed = dive_seed
 	_chosen = {}
+	# 海况色调：每潜微调水色/沙色/岩色，让不同下潜一眼可辨
+	_water_tint = Color(_rng.randf_range(0.86, 1.0), _rng.randf_range(0.9, 1.0), _rng.randf_range(0.9, 1.02))
+	_sand_tint = Color(_rng.randf_range(0.9, 1.06), _rng.randf_range(0.93, 1.02), _rng.randf_range(0.82, 1.0))
+	_rock_tint = Color(_rng.randf_range(0.84, 1.06), _rng.randf_range(0.87, 1.02), _rng.randf_range(0.9, 1.06))
 	for zone in ["A", "B", "C"]:
 		var variants: Array = MapDataRes.ZONE_VARIANTS[zone]
 		var index := _rng.randi_range(0, variants.size() - 1)
@@ -472,6 +479,7 @@ func _build_environment() -> void:
 	bg.position = Vector2(-120, -260)
 	bg.size = Vector2(5240, 1460)
 	bg.z_index = -20
+	bg.modulate = _water_tint
 	add_child(bg)
 
 	# 越往右越暗（区域加深）
@@ -746,18 +754,18 @@ func _build_terrain() -> void:
 
 			var edge := Color(0.2, 0.28, 0.33)
 			if kind == "sand":
-				edge = Color(0.5, 0.45, 0.3)
-				_sand_grid(body, rect, Color.WHITE)
+				edge = Color(0.5, 0.45, 0.3) * _sand_tint
+				_sand_grid(body, rect, _sand_tint)
 			elif kind == "wreck":
 				edge = Color(0.38, 0.27, 0.15)
 				_terrain_tiles(rect, "terrain_dirt_%s" % SAND_FILL[_rng.randi_range(0, 3)],
 					"terrain_dirt_top_%s" % DIRT_TOPS[_rng.randi_range(0, 7)],
-					Color(0.78, 0.6, 0.45))
+					Color(0.78, 0.6, 0.45) * _rock_tint)
 			else:
 				edge = Color(0.24, 0.3, 0.38)
 				_terrain_tiles(rect, "terrain_dirt_%s" % SAND_FILL[_rng.randi_range(0, 3)],
 					"terrain_dirt_top_%s" % DIRT_TOPS[_rng.randi_range(0, 7)],
-					Color(0.52, 0.58, 0.68))
+					Color(0.52, 0.58, 0.68) * _rock_tint)
 
 			var top_line := Line2D.new()
 			top_line.points = PackedVector2Array([rect.position, rect.position + Vector2(rect.size.x, 0)])

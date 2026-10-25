@@ -219,12 +219,16 @@ func shake(strength := 0.25) -> void:
 
 ## 空格刺击：自动瞄准 150px 内最近的敌人，无目标则朝面朝方向。
 func _update_attack() -> void:
-	if not Input.is_action_just_pressed("attack"):
-		return
+	if Input.is_action_just_pressed("attack"):
+		try_attack()
+
+
+## 执行一次刺击（输入层与测试共用的入口）；返回是否真正出手。
+func try_attack() -> bool:
 	if dead or control_locked or not GameState.has_harpoon:
-		return
+		return false
 	if _attack_cd > 0.0 or stamina < BalanceRes.HARPOON_STAMINA:
-		return
+		return false
 	_attack_cd = BalanceRes.HARPOON_COOLDOWN
 	_drain_stamina(BalanceRes.HARPOON_STAMINA)
 
@@ -252,6 +256,7 @@ func _update_attack() -> void:
 	velocity += aim_dir * 90.0
 	_spawn_stab_visual(aim_dir, hit_point)
 	Sfx.play("stab")
+	return true
 
 
 func _spawn_stab_visual(aim_dir: Vector2, hit_point: Vector2) -> void:

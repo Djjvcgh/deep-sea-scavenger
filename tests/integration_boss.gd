@@ -27,10 +27,8 @@ func _load_underwater() -> void:
 	await process_frame
 
 
-func _stab() -> void:
-	Input.action_press("attack")
-	await create_timer(0.1).timeout
-	Input.action_release("attack")
+func _stab(p: CharacterBody2D) -> void:
+	p.try_attack()
 	await create_timer(Balance.HARPOON_COOLDOWN + 0.15).timeout
 
 
@@ -46,6 +44,7 @@ func _run() -> void:
 	await _load_underwater()
 	var uw = current_scene
 	var player = uw.get_node("Player")
+	player.invincible_left = 99999.0   # 免疫咬击位移：保证刺击判定确定性（不影响鲨鱼受击）
 
 	# 打造鱼叉
 	gs.materials = {"wood": 1, "iron": 2, "canvas": 0, "leather": 0}
@@ -57,14 +56,17 @@ func _run() -> void:
 	var hp0: int = shark.hp
 	player.global_position = shark.global_position + Vector2(90, 0)
 	await create_timer(0.3).timeout
-	await _stab()
+	await _stab(player)
+	printerr("[诊断] 攻击后: 鲨鱼hp=", shark.hp, " cd=", player._attack_cd,
+		" 体力=", player.stamina, " harpoon=", gs.has_harpoon,
+		" 锁=", player.control_locked, " 死=", player.dead)
 	_check(shark.hp == hp0 - 1, "鱼叉刺击造成 1 点伤害")
 	_check(shark.state == shark.State.FLEE, "受击后鲨鱼逃窜")
 	for i in 2:
 		# 追上逃窜的鲨鱼再补刀（玩家冲刺可追上）
 		player.global_position = shark.global_position + Vector2(80, 0)
 		await create_timer(0.25).timeout
-		await _stab()
+		await _stab(player)
 	_check(shark.dead, "三次刺击击杀鲨鱼")
 	await create_timer(0.5).timeout
 	var found_pickup := false
@@ -85,9 +87,10 @@ func _run() -> void:
 
 	# ---------- 巨影 ----------
 	printerr("[深渊巨影]")
-	# 清场：击杀所有鲨鱼并回满状态，避免追咬干扰巨影流程验证
+	# 清场：击杀所有鲨鱼并回满状态，恢复可受伤（触拍伤害需要生效）
 	player.hp = 3
 	player.dead = false
+	player.invincible_left = 0.0
 	for s in get_nodes_in_group("sharks"):
 		s.take_damage(99, s.global_position + Vector2(0, 60))
 	player.global_position = Vector2(4000, 800)   # 进入区域C（巨影仅在C区活跃）

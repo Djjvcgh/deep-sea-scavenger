@@ -14,6 +14,7 @@ func _initialize() -> void:
 	failures += _test_game_state()
 	failures += _test_save_roundtrip()
 	failures += _test_map_data()
+	failures += _test_loot_randomness()
 	_print_result()
 	quit(1 if failures > 0 else 0)
 
@@ -356,6 +357,24 @@ func _test_map_data() -> int:
 					lane_fail += 1
 			_check(lane_fail == 0, "%s 三条安全通道贯通" % tag)
 
-	_check(variant_count == 9, "共 9 套布局变体（3 区域 × 3）")
+	_check(variant_count == 15, "共 15 套布局变体（3 区域 × 5）")
 	_check(quiet_fail == 0, "变体数据全部合法")
+	return 0
+
+
+func _test_loot_randomness() -> int:
+	print("[掉落随机性]")
+	var scene = load("res://scenes/underwater.tscn").new()
+	root.add_child(scene)
+	var qualities := {}
+	var type_seen := {}
+	for i in 150:
+		for entry in scene._roll_chest_loot("C"):
+			qualities[entry["quality"]] = qualities.get(entry["quality"], 0) + 1
+			type_seen[entry["id"]] = true
+	scene.queue_free()
+	_check(qualities.size() >= 3, "150 件 C 区掉落覆盖 ≥3 种品质（实际 %d）" % qualities.size())
+	_check(qualities.get("pristine", 0) > 0, "出现完美品质")
+	_check(qualities.get("standard", 0) > 0, "出现标准品质")
+	_check(type_seen.size() >= 2, "掉落类型多样（实际 %d 种）" % type_seen.size())
 	return 0

@@ -11,6 +11,7 @@ var _hp_dots: Array = []
 var _stamina_bar: ProgressBar
 var _bag_label: Label
 var _value_label: Label
+var _seed_label: Label
 var _zone_label: Label
 var _time_label: Label
 var _warning_label: Label
@@ -94,6 +95,8 @@ func _build() -> void:
 	tr.add_child(_bag_label)
 	_value_label = UICommon.label("本次估值 0", 20, UICommon.GOLD)
 	tr.add_child(_value_label)
+	_seed_label = UICommon.label("", 13, UICommon.DIM)
+	tr.add_child(_seed_label)
 
 	# 顶部中央：区域名 + 撤离窗口倒计时
 	_zone_label = UICommon.label("", 16, UICommon.DIM)
@@ -218,6 +221,8 @@ func _process(delta: float) -> void:
 	# 背包与估值
 	_bag_label.text = "背包 %d/%d" % [GameState.bag_used_slots(), GameState.bag_capacity()]
 	_value_label.text = "本次估值 %d" % GameState.dive_total_value()
+	if dive != null:
+		_seed_label.text = "海况 #%d" % dive.dive_seed
 
 	# 区域（含变体名，体现本次"海况"）
 	if dive != null and is_instance_valid(player):
