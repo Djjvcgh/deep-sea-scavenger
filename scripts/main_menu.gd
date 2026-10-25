@@ -1,14 +1,50 @@
 extends Control
 ## 主菜单：开始新游戏 / 继续游戏 / 设置 / 退出。
+## 音量与全屏设置持久化到 user://settings.json。
+
+const SETTINGS_PATH := "user://settings.json"
 
 var _bubbles: Array = []
 var _t := 0.0
+var _volume := 80.0
+var _fullscreen := false
 
 
 func _ready() -> void:
+	_load_settings()
+	_apply_audio()
+	if _fullscreen:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	_build_background()
 	_build_ui()
 	Sfx.play_ambient("ambient_island")
+
+
+func _load_settings() -> void:
+	if not FileAccess.file_exists(SETTINGS_PATH):
+		return
+	var f := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+	if f == null:
+		return
+	var parsed = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	_volume = clampf(float(parsed.get("volume", 80.0)), 0.0, 100.0)
+	_fullscreen = bool(parsed.get("fullscreen", false))
+
+
+func _save_settings() -> void:
+	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	if f == null:
+		push_error("设置写入失败")
+		return
+	f.store_string(JSON.stringify({"volume": _volume, "fullscreen": _fullscreen}))
+	f.close()
+
+
+func _apply_audio() -> void:
+	AudioServer.set_bus_volume_db(0, linear_to_db(_volume / 100.0) if _volume > 0.0 else -80.0)
 
 
 func _build_background() -> void:
@@ -140,17 +176,22 @@ func _on_settings() -> void:
 	var slider := HSlider.new()
 	slider.min_value = 0.0
 	slider.max_value = 100.0
-	slider.value = 80.0
+	slider.value = _volume
 	slider.custom_minimum_size = Vector2(0, 24)
 	slider.value_changed.connect(func(v: float) -> void:
-		AudioServer.set_bus_volume_db(0, linear_to_db(v / 100.0) if v > 0.0 else -80.0))
+		_volume = v
+		_apply_audio()
+		_save_settings())
 	box.add_child(slider)
 
 	var fullscreen := CheckButton.new()
 	fullscreen.text = "全屏"
+	fullscreen.button_pressed = _fullscreen
 	fullscreen.toggled.connect(func(on: bool) -> void:
+		_fullscreen = on
 		DisplayServer.window_set_mode(
-			DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED))
+			DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED)
+		_save_settings())
 	box.add_child(fullscreen)
 
 	var close_btn := UICommon.button("关闭", 18)
